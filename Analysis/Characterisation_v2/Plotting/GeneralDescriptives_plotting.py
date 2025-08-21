@@ -8,6 +8,7 @@ import os
 import pickle
 from matplotlib.patches import Patch
 from scipy.interpolate import interp1d
+from matplotlib.ticker import FuncFormatter
 import re
 import matplotlib.patches as mpatches
 
@@ -367,6 +368,204 @@ def plot_limb_positions(raw_data, phases, savedir, fs=7):
                         marker='o', markersize=3, color='black', linewidth=1, label='Mean')
 
 
+def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7, n_interp=100):
+    # plot the position of the leading toe at the start of the stride and the end of the stride in APA and Wash phases
+    mice = ['1035243', '1035244', '1035245', '1035246', '1035250', '1035297', '1035299', '1035301']
+    y_midline = structural_stuff['belt_width'] / 2
+    labels = ['Toe']
+
+    fig, ax = plt.subplots(figsize=(4, 2))
+
+    all_arr = {}
+    for phase in phases:
+        phase_runs = expstuff['condition_exp_runs']['APAChar']['Extended'][phase]
+        n_phase_runs = len(phase_runs)
+        n_mice = len(mice)
+        arr = np.full((n_mice, n_phase_runs, 3, 2), np.nan)
+
+        for m, mouse in enumerate(mice):
+            mouse_data = raw_data[mouse].droplevel('Day', axis=0)
+            for r, run in enumerate(phase_runs):
+                if run not in mouse_runs[mouse]:
+                    print(f"Run {run} not in mouse {mouse} runs, skipping.")
+                    continue
+
+                run_data = mouse_data.loc(axis=0)[run]
+
+                transition_idx = run_data.index.get_level_values(level='FrameIdx')[
+                    run_data.index.get_level_values('RunStage') == 'Transition'][0]
+                transition_paw = run_data.loc(axis=1)['initiating_limb'].loc(axis=0)['Transition', transition_idx]
+                stance_periods_mask = run_data.loc(axis=0)['RunStart'].loc(axis=1)[transition_paw, 'SwSt'] == \
+                                      locostuff['swst_vals_2025']['st']
+                stance_periods_idxs = run_data.loc(axis=0)['RunStart'].index.get_level_values(level='FrameIdx')[
+                    stance_periods_mask]
+                stance_chunks = utils.Utils().find_blocks(stance_periods_idxs, gap_threshold=10, block_min_size=10)
+                last_stance_idx = stance_chunks[-1][0]
+
+                stride_data = run_data.loc(axis=0)['RunStart', np.arange(last_stance_idx, transition_idx)]
+                bp_side = transition_paw.split('Forepaw')[1]
+                toe_name = 'ForepawToe' + bp_side
+                x = stride_data.loc(axis=1)[toe_name, 'x'].values
+                y = stride_data.loc(axis=1)[toe_name, 'y'].values
+                z = stride_data.loc(axis=1)[toe_name, 'z'].values
+
+                if bp_side == 'L':
+                    # Need to flip the y coords to mirror the left side to the right side
+                    mirrored_y = 2 * y_midline - y
+                    y = mirrored_y
+
+                first_x = x[0]
+                first_y = y[0]
+                first_z = z[0]
+                last_x = x[-1]
+                last_y = y[-1]
+                last_z = z[-1]
+
+                arr[m, r, 0, 0] = first_x
+                arr[m, r, 0, 1] = last_x
+                arr[m, r, 1, 0] = first_y
+                arr[m, r, 1, 1] = last_y
+                arr[m, r, 2, 0] = first_z
+                arr[m, r, 2, 1] = last_z
+        all_arr[phase] = arr
+
+        first_mean_x = np.nanmean(arr[:, :, 0, 0], axis=(0, 1))
+        first_mean_y = np.nanmean(arr[:, :, 1, 0], axis=(0, 1))
+        first_mean_z = np.nanmean(arr[:, :, 2, 0], axis=(0, 1))
+        last_mean_x = np.nanmean(arr[:, :, 0, 1], axis=(0, 1))
+        last_mean_y = np.nanmean(arr[:, :, 1, 1], axis=(0, 1))
+        last_mean_z = np.nanmean(arr[:, :, 2, 1], axis=(0, 1))
+
+        # plot x by y
+        color = pu.get_color_phase(phase)
+        ax.scatter(first_mean_x, first_mean_y, color=color, label='Start', marker='x', s=10, zorder=5)
+        ax.scatter(last_mean_x, last_mean_y, color=color, label='End', marker='x', s=10, zorder=5)
+        ax.plot([470,470], [0,50], color='k', linestyle='--', linewidth=0.5, zorder=0)
+
+    ax.set_ylim(0, 50)
+    ax.set_yticks(np.arange(0, 51, 25))
+    ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
+    ax.set_ylabel('Y (mm)', fontsize=fs)
+    ax.set_xlim(0, 600)
+    ax.set_xticks([0,470, 600])
+    ax.set_xticklabels([0, 470, 600], fontsize=fs)
+    ax.set_xlabel('X (mm)', fontsize=fs)
+    ax.set_aspect('equal', adjustable='box')
+
+    savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}")
+    fig.savefig(f"{savepath}.png", dpi=400)
+    fig.savefig(f"{savepath}.svg", dpi=400)
+
+
+
+
+
+
+
+def plot_toe_trajectory_real_distance(raw_data, mouse_runs, phases, savedir, fs=7, n_interp=100):
+    mice = ['1035243', '1035244', '1035245', '1035246', '1035250', '1035297', '1035299', '1035301']
+    labels = ['Toe', 'TransitionR', 'TransitionL']
+
+    all_arr = {}
+    for phase in phases:
+        phase_runs = expstuff['condition_exp_runs']['APAChar']['Extended'][phase]
+        n_phase_runs = len(phase_runs)
+        n_mice = len(mice)
+        n_bps = 3  # Only Toe, TransitionR and TransitionL
+        arr = np.full((n_mice, n_phase_runs, n_bps, 3, n_interp), np.nan)
+
+        for m, mouse in enumerate(mice):
+            mouse_data = raw_data[mouse].droplevel('Day', axis=0)
+            for r, run in enumerate(phase_runs):
+                if run not in mouse_runs[mouse]:
+                    print(f"Run {run} not in mouse {mouse} runs, skipping.")
+                    continue
+
+                run_data = mouse_data.loc(axis=0)[run]
+
+                transition_idx = run_data.index.get_level_values(level='FrameIdx')[run_data.index.get_level_values('RunStage') == 'Transition'][0]
+                transition_paw = run_data.loc(axis=1)['initiating_limb'].loc(axis=0)['Transition', transition_idx]
+                stance_periods_mask = run_data.loc(axis=0)['RunStart'].loc(axis=1)[transition_paw, 'SwSt'] == locostuff['swst_vals_2025']['st']
+                stance_periods_idxs = run_data.loc(axis=0)['RunStart'].index.get_level_values(level='FrameIdx')[stance_periods_mask]
+                stance_chunks = utils.Utils().find_blocks(stance_periods_idxs, gap_threshold=10, block_min_size=10)
+                last_stance_idx = stance_chunks[-1][0]
+
+                stride_data = run_data.loc(axis=0)['RunStart', np.arange(last_stance_idx, transition_idx)]
+
+                bp_side = transition_paw.split('Forepaw')[1]
+                ref_bp = 'ForepawToe' + bp_side  # e.g., 'ForepawToeR'
+
+                for b, bp in enumerate(labels):
+                    if bp == 'Toe':
+                        bp_name = ref_bp
+                    else:
+                        bp_name = bp
+
+                    x = stride_data.loc(axis=1)[bp_name, 'x'].values
+                    y = stride_data.loc(axis=1)[bp_name, 'y'].values # dont actually use y here BUT if i did would need to mirror everything!
+                    z = stride_data.loc(axis=1)[bp_name, 'z'].values
+
+                    n_pts = len(x)
+
+                    if np.isnan(x).any() or np.isnan(y).any() or np.isnan(z).any():
+                        continue
+
+                    # Interpolate to n_interp points
+                    x_interp = interp1d(np.linspace(0, 1, n_pts), x, kind='linear')(np.linspace(0, 1, n_interp))
+                    y_interp = interp1d(np.linspace(0, 1, n_pts), y, kind='linear')(np.linspace(0, 1, n_interp))
+                    z_interp = interp1d(np.linspace(0, 1, n_pts), z, kind='linear')(np.linspace(0, 1, n_interp))
+
+                    arr[m, r, b, 0, :] = x_interp
+                    arr[m, r, b, 1, :] = y_interp
+                    arr[m, r, b, 2, :] = z_interp
+        all_arr[phase] = arr
+
+        mean_x = np.nanmean(arr[:, :, :, 0, :], axis=(0, 1))
+        mean_z = np.nanmean(arr[:, :, :, 2, :], axis=(0, 1))
+
+        mean_TransitionR_x = np.nanmean(mean_x[1, :])
+        mean_TransitionR_z = np.nanmean(mean_z[1, :])
+        mean_TransitionL_x = np.nanmean(mean_x[2, :])
+        mean_TransitionL_z = np.nanmean(mean_z[2, :])
+
+        mean_transition = np.array([[mean_TransitionR_x, mean_TransitionL_x],
+                                    [mean_TransitionR_z, mean_TransitionL_z]])
+
+
+        # Now plot the mean toe trajectory for each phase
+        fig, ax = plt.subplots(figsize=(2.5, 2))
+        # plot toe trajectory
+        color = pu.get_color_phase(phase)
+        ax.plot(mean_x[0, :], mean_z[0, :], color=color, label='Toe', linewidth=1)
+        # plot TransitionR and TransitionL
+        ax.scatter(mean_TransitionR_x, mean_TransitionR_z, color='k', label='TransitionR', marker='x', s=50, zorder=5)
+
+        ax.set_ylim(-0.4, 4)
+        ax.set_yticks(np.arange(0, 4.1, 2))
+        ax.set_yticklabels(np.arange(0, 4.1, 2), fontsize=fs)
+        ax.set_ylabel('Z (mm)', fontsize=fs)
+        ax.set_xlim(390,500)
+        ax.set_xticks(np.arange(400, 501, 25))
+        ax.set_xticklabels(np.arange(400, 501, 25), fontsize=fs)
+        ax.set_xlabel('X (mm)', fontsize=fs)
+        ax.tick_params(axis='both', which='major', length=4, width=1, labelsize=fs)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        plt.subplots_adjust(left=0.2, right=0.95, top=0.9, bottom=0.2)
+        # plt.tight_layout()
+
+        save_path = os.path.join(savedir, f"toe_trajectory_{phase}")
+        fig.savefig(f"{save_path}.png", dpi=400)
+        fig.savefig(f"{save_path}.svg", dpi=400)
+
+        plt.close(fig)
+
+
+
+
+
+
 def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_interp=100):
     forelimb_parts = ['ForepawToe', 'ForepawKnuckle', 'ForepawAnkle', 'ForepawKnee']
     mice = ['1035243', '1035244', '1035245', '1035246', '1035250', '1035297', '1035299', '1035301']
@@ -382,6 +581,10 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
         n_mice = len(mice)
         n_bps = len(forelimb_parts)
         arr = np.full((n_mice, n_phase_runs, n_bps, 3, n_interp), np.nan)
+        transitionR = np.full((n_mice, n_phase_runs, 3), np.nan)  # For TransitionR and TransitionL
+        transitionL = np.full((n_mice, n_phase_runs, 3), np.nan)  # For TransitionR and TransitionL
+        x_starts = []
+        x_ends = []
 
         for m, mouse in enumerate(mice):
             mouse_data = raw_data[mouse].droplevel('Day', axis=0)
@@ -432,6 +635,9 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
                 x_start = x_ref_all[0]
                 x_end = x_ref_all[-1]
 
+                x_starts.append(x_start)
+                x_ends.append(x_end)
+
                 # 2. Stack all joints to get overall mean y/z for run (use a list or array)
                 y_all_joints = []
                 z_all_joints = []
@@ -440,6 +646,8 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
                     try:
                         y = stride_data.loc(axis=1)[bp_name, 'y'].values
                         z = stride_data.loc(axis=1)[bp_name, 'z'].values
+                        if bp_side == 'L':
+                            y = 2 * y_midline - y
                         y_all_joints.append(y)
                         z_all_joints.append(z)
                     except KeyError:
@@ -455,25 +663,62 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
                     y = stride_data.loc(axis=1)[bp_name, 'y'].values
                     z = stride_data.loc(axis=1)[bp_name, 'z'].values
 
-                    if np.isnan(x).any() or np.isnan(y).any() or np.isnan(z).any():
-                        continue
                     if bp_side == 'L':
                         y = 2 * y_midline - y
+
+                    x_TR = stride_data.loc(axis=1)['TransitionR', 'x'].values
+                    x_TL = stride_data.loc(axis=1)['TransitionL', 'x'].values
+                    y_TR = stride_data.loc(axis=1)['TransitionR', 'y'].values
+                    y_TL = stride_data.loc(axis=1)['TransitionL', 'y'].values
+                    z_TR = stride_data.loc(axis=1)['TransitionR', 'z'].values
+                    z_TL = stride_data.loc(axis=1)['TransitionL', 'z'].values
+
+                    if bp_side == 'L':
+                        y_TR = 2 * y_midline - y_TR
+                        y_TL = 2 * y_midline - y_TL
+
+                    if np.isnan(x).any() or np.isnan(y).any() or np.isnan(z).any():
+                        continue
+
                     n_pts = len(x)
 
                     # --- NORMALISE ---
                     # x: relative to stride start/end of reference toe/ankle
-                    x_norm = 100 * (x - x_start) / (x_end - x_start)
+                    x_norm = (x - x_start) / (x_end - x_start) * 100
                     # y/z: center by whole run mean
                     y_norm = y - y_center
                     z_norm = z - z_center
 
+                    x_TR_norm = (x_TR - x_start) / (x_end - x_start) * 100
+                    x_TL_norm = (x_TL - x_start) / (x_end - x_start) * 100
+                    y_TR_norm = y_TR - y_center
+                    y_TL_norm = y_TL - y_center
+                    z_TR_norm = z_TR - z_center
+                    z_TL_norm = z_TL - z_center
+
                     interp_x = interp1d(np.linspace(0, 1, n_pts), x_norm, kind='linear')(np.linspace(0, 1, n_interp))
                     interp_y = interp1d(np.linspace(0, 1, n_pts), y_norm, kind='linear')(np.linspace(0, 1, n_interp))
                     interp_z = interp1d(np.linspace(0, 1, n_pts), z_norm, kind='linear')(np.linspace(0, 1, n_interp))
+
                     arr[m, r, b, 0, :] = interp_x
                     arr[m, r, b, 1, :] = interp_y
                     arr[m, r, b, 2, :] = interp_z
+
+                    # summarise over time in the window (or mid-window if you prefer)
+                    TR_mean = np.array([np.mean(x_TR_norm), np.mean(y_TR_norm), np.mean(z_TR_norm)])
+                    TL_mean = np.array([np.mean(x_TL_norm), np.mean(y_TL_norm), np.mean(z_TL_norm)])
+
+                    # Assign ipsi/contra based on leading paw
+                    if bp_side == 'R':
+                        ipsi_mean = TR_mean
+                        contra_mean = TL_mean
+                    else:  # 'L'
+                        ipsi_mean = TL_mean
+                        contra_mean = TR_mean
+
+                    # Now store them back into the original R/L arrays so plotting code doesn't change
+                    transitionR[m, r, :] = ipsi_mean
+                    transitionL[m, r, :] = contra_mean
 
                 stride_len = x_end - x_start
                 if 'stride_lengths' not in locals():
@@ -482,18 +727,39 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
 
         mean_stride_len = np.nanmean(stride_lengths[phase])
 
+        x_starts_mean = np.nanmean(np.array(x_starts))
+        x_ends_mean = np.nanmean(np.array(x_ends))
+        x_distance = x_ends_mean - x_starts_mean
+
         # 1. Compute the average x and z for each joint at each time point
-        mean_x = np.nanmean(arr[:, :, :, 0, :], axis=(0, 1))  # shape: [n_bps, n_interp]
+        mean_x = np.nanmean(arr[:, :, :, 0, :], axis=(0, 1)) * x_distance / 100 # shape: [n_bps, n_interp]
         mean_y = np.nanmean(arr[:, :, :, 1, :], axis=(0, 1))  # shape: [n_bps, n_interp]
         mean_z = np.nanmean(arr[:, :, :, 2, :], axis=(0, 1))  # shape: [n_bps, n_interp]
 
+        mean_TR_x = np.nanmean(transitionR[:, :, 0], axis=(0, 1)) * x_distance / 100  # shape: [n_interp]
+        mean_TR_y = np.nanmean(transitionR[:, :, 1], axis=(0, 1))  # shape: [n_interp]
+        mean_TR_z = np.nanmean(transitionR[:, :, 2], axis=(0, 1))  # shape: [n_interp]
+        mean_TL_x = np.nanmean(transitionL[:, :, 0], axis=(0, 1)) * x_distance / 100  # shape: [n_interp]
+        mean_TL_y = np.nanmean(transitionL[:, :, 1], axis=(0, 1))  # shape: [n_interp]
+        mean_TL_z = np.nanmean(transitionL[:, :, 2], axis=(0, 1))  # shape: [n_interp]
+
         # 2. Stick-figure sequence plot (trajectory through the stride)
+        base_color = pu.get_color_phase(phase)
+        cmap = pu.make_phase_cmap(base_color, light=0.80, dark=0.9)  # tweak to taste
+        norm = plt.Normalize(0, n_interp - 1)
+
         fig, ax = plt.subplots(figsize=(6, 2))
         # Plot stick figures for each timepoint (optional: stride through in steps for less clutter)
         for t in range(n_interp):
             xs = mean_x[:, t]
             zs = mean_z[:, t]
-            ax.plot(xs, zs, marker='.', color='k', alpha=0.4, linewidth=0.5, markersize=1, zorder=1)
+            color = cmap(norm(t))
+            ax.plot(xs, zs, marker='.', color=color, alpha=0.4, linewidth=0.5, markersize=1, zorder=1)
+        # Plot the mean transition points
+        transitions = np.array([np.mean([mean_TR_x, mean_TL_x]),
+                                np.mean([mean_TR_z, mean_TL_z])])
+        ax.scatter(transitions[0], transitions[1], marker='o', color='black', alpha=0.6, linewidth=1, s=2, zorder=2)
+
         desired_mm = 10  # or px, depending on your units
         # How big is this in normalised units?
         if mean_stride_len > 0:
@@ -506,6 +772,11 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
         ax.hlines(sb_y, sb_x_start, sb_x_start + scale_bar_norm, color='black', linewidth=2)
         ax.text(sb_x_start + scale_bar_norm / 2, sb_y - 1.5, '10 mm', ha='center', va='top', fontsize=fs)
 
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.15)
+        cbar.set_label("Relative time in stride (%)", fontsize=fs)
+
         ax.set_title(phase, fontsize=fs)
         ax.set_xlabel('x (normalised)', fontsize=fs)
         ax.set_ylabel('z (centred)', fontsize=fs)
@@ -513,44 +784,44 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
         ax.set_ylim(-10, 10)
         ax.set_yticks(np.arange(-10, 11, 5))
         ax.set_yticklabels(np.arange(-10, 11, 5), fontsize=fs)
-        ax.set_xlim(-50, 100)
+        ax.set_xlim(-50, 115)
         ax.set_xticks(np.arange(-50, 101, 50))
         ax.set_xticklabels(np.arange(-50, 101, 50), fontsize=fs)
         ax.set_aspect('equal')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.tight_layout()
-        save_path = os.path.join(savedir, f"stick_trajectory_{phase}")
+        save_path = os.path.join(savedir, f"stick_trajectory_{phase}_color")
         plt.savefig(f"{save_path}.png", dpi=400)
         plt.savefig(f"{save_path}.svg", dpi=400)
         plt.close(fig)
 
-        # plot 3d version
-        # 3D plot of the stick figure trajectory
-        fig = plt.figure(figsize=(5, 5))
-        ax = fig.add_subplot(111, projection='3d')
-        for t in range(n_interp):
-            xs = mean_x[:, t]
-            ys = mean_y[:, t]
-            zs = mean_z[:, t]
-            ax.plot(xs, ys, zs, marker='.', color='k', alpha=0.4, linewidth=0.5, markersize=1, zorder=1)
-        ax.set_xlim(np.nanmin(mean_x), np.nanmax(mean_x))
-        ax.set_ylim(np.nanmin(mean_y), np.nanmax(mean_y))
-        ax.set_zlim(np.nanmin(mean_z), np.nanmax(mean_z))
-
-        ax.set_title(phase, fontsize=fs)
-        ax.set_xlabel('x (normalised)', fontsize=fs)
-        ax.set_ylabel('y (centred)', fontsize=fs)
-        ax.set_zlabel('z (centred)', fontsize=fs)
-        ax.tick_params(axis='both', which='major', labelsize=fs)
-        # Calculate the ranges for each axis
-        x_range = np.nanmax(mean_x) - np.nanmin(mean_x)
-        y_range = np.nanmax(mean_y) - np.nanmin(mean_y)
-        z_range = np.nanmax(mean_z) - np.nanmin(mean_z)
-        ax.set_box_aspect([x_range, y_range, z_range])  # Matches real proportions!
-        #        plt.tight_layout()
-        plt.savefig(f"{savedir}/stick_trajectory_3d_{phase}.png", dpi=400)
-        plt.close(fig)
+        # # plot 3d version    ######### if restore this would need to mirror y!!!!
+        # # 3D plot of the stick figure trajectory
+        # fig = plt.figure(figsize=(5, 5))
+        # ax = fig.add_subplot(111, projection='3d')
+        # for t in range(n_interp):
+        #     xs = mean_x[:, t]
+        #     ys = mean_y[:, t]
+        #     zs = mean_z[:, t]
+        #     ax.plot(xs, ys, zs, marker='.', color='k', alpha=0.4, linewidth=0.5, markersize=1, zorder=1)
+        # ax.set_xlim(np.nanmin(mean_x), np.nanmax(mean_x))
+        # ax.set_ylim(np.nanmin(mean_y), np.nanmax(mean_y))
+        # ax.set_zlim(np.nanmin(mean_z), np.nanmax(mean_z))
+        #
+        # ax.set_title(phase, fontsize=fs)
+        # ax.set_xlabel('x (normalised)', fontsize=fs)
+        # ax.set_ylabel('y (centred)', fontsize=fs)
+        # ax.set_zlabel('z (centred)', fontsize=fs)
+        # ax.tick_params(axis='both', which='major', labelsize=fs)
+        # # Calculate the ranges for each axis
+        # x_range = np.nanmax(mean_x) - np.nanmin(mean_x)
+        # y_range = np.nanmax(mean_y) - np.nanmin(mean_y)
+        # z_range = np.nanmax(mean_z) - np.nanmin(mean_z)
+        # ax.set_box_aspect([x_range, y_range, z_range])  # Matches real proportions!
+        # #        plt.tight_layout()
+        # plt.savefig(f"{savedir}/stick_trajectory_3d_{phase}.png", dpi=400)
+        # plt.close(fig)
 
         # 3. Mean stick-figure (average posture across stride)
         # Recenter x to the toe at each timepoint before averaging
@@ -578,9 +849,9 @@ def plot_limb_positions_average(raw_data, mouse_runs, phases, savedir, fs=7, n_i
         ax.set_ylim(-8,8)
         ax.set_yticks(np.arange(-8, 9, 8))
         ax.set_yticklabels(np.arange(-8, 9, 8), fontsize=fs)
-        ax.set_xlim(-40, 10)
-        ax.set_xticks(np.arange(-40, 11, 10))
-        ax.set_xticklabels(np.arange(-40, 11, 10), fontsize=fs)
+        ax.set_xlim(-30, 10)
+        ax.set_xticks(np.arange(-30, 11, 10))
+        ax.set_xticklabels(np.arange(-30, 11, 10), fontsize=fs)
         ax.set_aspect('equal')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -619,7 +890,7 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         'Back1', 'Back2', 'Back3', 'Back4', 'Back5', 'Back6', 'Back7', 'Back8', 'Back9', 'Back10', 'Back11', 'Back12',
         'Tail1', 'Tail2', 'Tail3', 'Tail4', 'Tail5', 'Tail6', 'Tail7', 'Tail8', 'Tail9', 'Tail10', 'Tail11', 'Tail12',
     ]
-
+    ymidline = structural_stuff['belt_width'] / 2
     mice = ['1035243', '1035244', '1035245', '1035246', '1035250', '1035297', '1035299', '1035301']
 
     # --- 1. Calculate mean back/tail lengths and nose/ear offsets from Back1 ---
@@ -634,7 +905,6 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
                     continue
                 run_data = mouse_data.loc(axis=0)[run]
                 try:
-                    # Back: Back1 to Back12, Tail: Tail1 to Tail12
                     back1_x = run_data.loc(axis=1)['Back1', 'x'].values
                     back12_x = run_data.loc(axis=1)['Back12', 'x'].values
                     tail1_x = run_data.loc(axis=1)['Tail1', 'x'].values
@@ -675,6 +945,7 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
     all_arr = {}
     stride_lengths = {ph: [] for ph in phases}
     phase_shapes = {}
+    phase_transition_means = {}  # will hold {'R': [x,y,z], 'L': [x,y,z], 'avg': [x,y,z]} per phase
 
     for phase in phases:
         phase_runs = expstuff['condition_exp_runs']['APAChar']['Extended'][phase]
@@ -682,6 +953,10 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         n_mice = len(mice)
         n_bps = len(body_parts)
         arr = np.full((n_mice, n_phase_runs, n_bps, 3, n_interp), np.nan)
+
+        # store TransitionR/L relative positions per run (to Back1 at transition frame; y centered; z raw)
+        ipsi_rel = []
+        contra_rel = []
 
         for m, mouse in enumerate(mice):
             mouse_data = raw_data[mouse].droplevel('Day', axis=0)
@@ -700,6 +975,8 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
                 last_stance_idx = stance_chunks[-1][0]
                 stride_data = run_data.loc(axis=0)['RunStart', np.arange(last_stance_idx, transition_idx)]
 
+                transition_paw_side = transition_paw.split('Forepaw')[1]  # 'L' or 'R'
+
                 # Reference: Back12 x at stride start/end
                 ref_bp = 'Back12'
                 try:
@@ -712,54 +989,102 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
                 stride_len = x_end - x_start
                 stride_lengths[phase].append(stride_len)
 
+                # y centering reference for this stride window (consistent with body normalization)
+                #y_ref = np.mean(np.mean(stride_data.loc(axis=1)[['TransitionR', 'TransitionL'], 'y'].values, axis=1))
+                y_ref = ymidline
+
+                # collect transition R/L positions relative to Back1 at the transition frame
+                back1_x_t = np.mean(stride_data.loc(axis=1)['Back1','x'].values)
+
+                # TransitionR
+                tR_x = np.mean(run_data.loc(axis=1)['TransitionR', 'x'].values)
+                tR_y = np.mean(run_data.loc(axis=1)['TransitionR', 'y'].values)
+                tR_z = np.mean(run_data.loc(axis=1)['TransitionR', 'z'].values)
+
+                # TransitionL
+                tL_x = np.mean(run_data.loc(axis=1)['TransitionL', 'x'].values)
+                tL_y = np.mean(run_data.loc(axis=1)['TransitionL', 'y'].values)
+                tL_z = np.mean(run_data.loc(axis=1)['TransitionL', 'z'].values)
+
+                if transition_paw_side == 'L':
+                    tR_y = 2 * ymidline - tR_y
+                    tL_y = 2 * ymidline - tL_y
+
+                TR_rel = (tR_x - back1_x_t, tR_y - y_ref, tR_z)
+                TL_rel = (tL_x - back1_x_t, tL_y - y_ref, tL_z)
+
+                if transition_paw_side == 'R':
+                    ipsi_rel.append(TR_rel)
+                    contra_rel.append(TL_rel)
+                else:
+                    ipsi_rel.append(TL_rel)
+                    contra_rel.append(TR_rel)
+
+                # fill arrays for body parts
+                lateral_swap = {'EarR': 'EarL', 'EarL': 'EarR'}
                 for b, bp in enumerate(body_parts):
+                    bp_fetch = bp
+                    if transition_paw_side == 'L' and bp in lateral_swap:
+                        bp_fetch = lateral_swap[bp]  # relabel for mirrored trials
+
                     try:
-                        x = stride_data.loc(axis=1)[bp, 'x'].values
-                        y = stride_data.loc(axis=1)[bp, 'y'].values
-                        z = stride_data.loc(axis=1)[bp, 'z'].values
+                        x = stride_data.loc(axis=1)[bp_fetch, 'x'].values
+                        y = stride_data.loc(axis=1)[bp_fetch, 'y'].values
+                        z = stride_data.loc(axis=1)[bp_fetch, 'z'].values
                     except KeyError:
                         continue
                     if np.isnan(x).any() or np.isnan(y).any() or np.isnan(z).any():
                         continue
                     n_pts = len(x)
 
-                    # Use fixed template x; interpolate y/z as before
+                    if transition_paw_side == 'L': # mirror y for left side
+                        y = 2 * ymidline - y
+
+                    # fixed template x; interpolate y/z as before
                     x_fixed = bp_xvals[bp]
-                    y_ref = np.mean(np.mean(stride_data.loc(axis=1)[['TransitionR', 'TransitionL'], 'y'].values, axis=1))
-                    z_ref = np.mean(np.mean(stride_data.loc(axis=1)[['TransitionR', 'TransitionL'], 'z'].values, axis=1))
-                    y_norm = y - y_ref
-                    z_norm = z - z_ref
+                    z_norm = z  # already relative to belt surface
                     interp_x = np.full(n_interp, x_fixed)
-                    interp_y = interp1d(np.linspace(0, 1, n_pts), y_norm, kind='linear')(np.linspace(0, 1, n_interp))
+                    interp_y = interp1d(np.linspace(0, 1, n_pts), y - y_ref, kind='linear')(np.linspace(0, 1, n_interp))
                     interp_z = interp1d(np.linspace(0, 1, n_pts), z_norm, kind='linear')(np.linspace(0, 1, n_interp))
                     arr[m, r, b, 0, :] = interp_x
                     arr[m, r, b, 1, :] = interp_y
                     arr[m, r, b, 2, :] = interp_z
 
-        # -- Mean and std across runs and mice for each body part, at each time point --
+        # means across runs and mice
         mean_x = np.nanmean(arr[:, :, :, 0, :], axis=(0, 1))
         mean_z = np.nanmean(arr[:, :, :, 2, :], axis=(0, 1))
         mean_y = np.nanmean(arr[:, :, :, 1, :], axis=(0, 1))
         std_x = np.nanstd(arr[:, :, :, 0, :], axis=(0, 1))
         std_z = np.nanstd(arr[:, :, :, 2, :], axis=(0, 1))
 
-        # -- Store mean shape for this phase for summary plot --
+        # store mean shape for this phase for summary plot
         avg_x = np.array([bp_xvals[bp] for bp in body_parts])
         avg_z = np.nanmean(mean_z, axis=1)
         avg_y = np.nanmean(mean_y, axis=1)
         phase_shapes[phase] = (avg_x, avg_y, avg_z)
 
-        # -- Optionally plot and save individual phase shapes as before --
+        # compute per-phase transition means for R, L, and average
+        mean_tx_ipsi = np.nanmean(np.array(ipsi_rel), axis=0)
+        mean_tx_contra = np.nanmean(np.array(contra_rel), axis=0)
+        mean_tx_avg = np.nanmean(np.vstack([mean_tx_ipsi, mean_tx_contra]), axis=0)
+
+        phase_transition_means[phase] = {'ipsi': mean_tx_ipsi, 'contra': mean_tx_contra, 'avg': mean_tx_avg}
+
+        # per-phase plot of mean shape (side view x vs z) with averaged transition marker
         fig, ax = plt.subplots(figsize=(4, 2.5))
         ax.plot(avg_x, avg_z, marker='o', color='black', linewidth=2, markersize=4, zorder=2)
         for i, bp in enumerate(body_parts):
             ax.text(avg_x[i], avg_z[i], bp, fontsize=fs-1, ha='right', va='center', color='black', zorder=3)
+
+        tx = phase_transition_means[phase]['avg']
+        if not np.isnan(tx).any():
+            ax.scatter(tx[0], tx[2], s=60, marker='*', color='magenta', linewidths=0, zorder=5, label='Transition (avg)')
+            ax.legend(fontsize=fs-1, loc='best')
+
         ax.set_title(f"{phase} (mean shape)", fontsize=fs)
         ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
-        ax.set_ylabel('z (centred)', fontsize=fs)
-        # ax.set_ylim(0, 40)
-        # ax.set_xlim(-10, mean_back_length + mean_tail_length + 10)
-        ax.invert_xaxis()  # Invert x-axis: mouse faces left
+        ax.set_ylabel('z', fontsize=fs)
+        ax.invert_xaxis()
         ax.set_aspect('equal')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -773,42 +1098,138 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         all_arr[phase] = arr
 
     # --- Plot APA and Wash phases together on the same figure ---
+    for type in ['side', 'front', 'top']:
+        fig, ax = plt.subplots(figsize=(6, 2))
+        for p in phases:
+            avg_x, avg_y, avg_z = phase_shapes[p]
+            if type == 'side':
+                x_plot = avg_x
+                y_plot = avg_z
+            elif type == 'front':
+                x_plot = avg_y
+                y_plot = avg_z
+            elif type == 'top':
+                x_plot = avg_x
+                y_plot = avg_y
+            color = pu.get_color_phase(p)
+            ax.plot(x_plot[[0,1]], y_plot[[0,1]], marker='o', color=color, linewidth=0.5, markersize=1, label=p)
+            ax.plot(x_plot[[0,2]], y_plot[[0,2]], marker='o', color=color, linewidth=0.5, markersize=1)
+            ax.plot(x_plot[[1,2]], y_plot[[1,2]], marker='o', color=color, linewidth=0.5, markersize=1)
+            ax.plot(x_plot[[0,3]], y_plot[[0,3]], marker='o', color=color, linewidth=0.5, markersize=1)
+            ax.plot(x_plot[[1,3]], y_plot[[1,3]], marker='o', color=color, linewidth=0.5, markersize=1)
+            ax.plot(x_plot[[2,3]], y_plot[[2,3]], marker='o', color=color, linewidth=0.5, markersize=1)
+            ax.plot(x_plot[3:], y_plot[3:], marker='o', color=color, linewidth=0.5, markersize=1)
 
-    fig, ax = plt.subplots(figsize=(6, 2))
-    for p in phases:
-        avg_x, _, avg_z = phase_shapes[p]
-        color = pu.get_color_phase(p)
-        ax.plot(avg_x[[0,1]], avg_z[[0,1]], marker='o', color=color, linewidth=1, markersize=1, label=p)
-        ax.plot(avg_x[[0,2]], avg_z[[0,2]], marker='o', color=color, linewidth=1, markersize=1)
-        ax.plot(avg_x[[1,2]], avg_z[[1,2]], marker='o', color=color, linewidth=1, markersize=1)
-        ax.plot(avg_x[[0,3]], avg_z[[0,3]], marker='o', color=color, linewidth=1, markersize=1)
-        ax.plot(avg_x[[1,3]], avg_z[[1,3]], marker='o', color=color, linewidth=1, markersize=1)
-        ax.plot(avg_x[[2,3]], avg_z[[2,3]], marker='o', color=color, linewidth=1, markersize=1)
-        ax.plot(avg_x[3:], avg_z[3:], marker='o', color=color, linewidth=1, markersize=1)
+            # overlay transitions
+            txs = phase_transition_means[p]
+            if type == 'side':
+                tx = txs['avg']
+                if not np.isnan(tx).any():
+                    ax.scatter(tx[0], tx[2], s=50, marker='.', color=color, linewidths=0, zorder=6)
+            elif type == 'front':
+                ax.plot([txs['ipsi'][1], txs['contra'][1]], [txs['ipsi'][2], txs['contra'][2]], 'o-', color=color, linewidth=0.5, markersize=1, zorder=5)
+            elif type == 'top':
+                ax.plot([txs['ipsi'][0], txs['contra'][0]], [txs['ipsi'][1], txs['contra'][1]], 'o-', color=color, linewidth=0.5, markersize=1, zorder=5)
 
-    # for i, bp in enumerate(body_parts):
-    #     ax.text(avg_x_APA[i], avg_z_APA[i], bp, fontsize=fs-1, ha='right', va='center', color='blue', alpha=0.7)
-    #     ax.text(avg_x_Wash[i], avg_z_Wash[i], bp, fontsize=fs-1, ha='left', va='center', color='red', alpha=0.7)
+
+        if type == 'side':
+            ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
+            ax.set_ylabel('z', fontsize=fs)
+            ax.set_xlim(-30, 150)
+            ax.set_xticks(np.arange(-25, 151, 25))
+            ax.set_xticklabels(np.arange(-25, 151, 25), fontsize=fs)
+            ax.set_ylim(-5, 40)
+            ax.set_yticks(np.arange(0, 41, 20))
+            ax.set_yticklabels(np.arange(0, 41, 20), fontsize=fs)
+            ax.invert_xaxis()
+        elif type == 'front':
+            ax.set_xlabel('y (centered)', fontsize=fs)
+            ax.set_ylabel('z', fontsize=fs)
+            ax.set_xlim(-30, 30)
+            ax.set_xticks(np.arange(-25, 26, 25))
+            ax.set_xticklabels(np.arange(-25, 26, 25), fontsize=fs)
+            ax.set_ylim(-5, 40)
+            ax.set_yticks(np.arange(0, 41, 20))
+            ax.set_yticklabels(np.arange(0, 41, 20), fontsize=fs)
+        elif type == 'top':
+            ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
+            ax.set_ylabel('y (centered)', fontsize=fs)
+            ax.set_xlim(-30, 150)
+            ax.set_xticks(np.arange(-25, 151, 25))
+            ax.set_xticklabels(np.arange(-25, 151, 25), fontsize=fs)
+            ax.set_ylim(-30, 30)
+            ax.set_yticks(np.arange(-25, 26, 25))
+            ax.set_yticklabels(np.arange(-25, 26, 25), fontsize=fs)
+            ax.invert_xaxis()
+
+        ax.set_aspect('equal')
+        # dedup legend entries
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), fontsize=fs)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.tick_params(axis='both', which='major', labelsize=fs)
+        plt.tight_layout()
+        save_path = os.path.join(savedir, f"body_shape_APA_vs_Wash{type.capitalize()}")
+        plt.savefig(f"{save_path}.png", dpi=400)
+        plt.savefig(f"{save_path}.svg", dpi=400)
+        plt.close(fig)
+
+    # 3D Plot of the average body shape with TransitionR/L markers
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    fig = plt.figure(figsize=(6, 4))
+    ax = fig.add_subplot(111, projection='3d')
+    for phase in phases:
+        avg_x, avg_y, avg_z = phase_shapes[phase]
+        color = pu.get_color_phase(phase)
+        xs = avg_x * -1
+        ys = avg_y
+        zs = avg_z
+
+        ax.plot(xs[[0, 1]], ys[[0, 1]], zs[[0, 1]], 'o-', color=color, linewidth=0.5, markersize=1, label=phase, zorder=10)
+        ax.plot(xs[[0, 2]], ys[[0, 2]], zs[[0, 2]], 'o-', color=color, linewidth=0.5, markersize=1)
+        ax.plot(xs[[1, 2]], ys[[1, 2]], zs[[1, 2]], 'o-', color=color, linewidth=0.5, markersize=1)
+        ax.plot(xs[[0, 3]], ys[[0, 3]], zs[[0, 3]], 'o-', color=color, linewidth=0.5, markersize=1)
+        ax.plot(xs[[1, 3]], ys[[1, 3]], zs[[1, 3]], 'o-', color=color, linewidth=0.5, markersize=1)
+        ax.plot(xs[[2, 3]], ys[[2, 3]], zs[[2, 3]], 'o-', color=color, linewidth=0.5, markersize=1)
+        ax.plot(xs[3:], ys[3:], zs[3:], 'o-', color=color, linewidth=0.5, markersize=1)
+
+        # overlay TransitionR/L stars in 3D (note x negation)
+        txs = phase_transition_means[phase]
+        ax.plot([-txs['ipsi'][0], -txs['contra'][0]], [txs['ipsi'][1], txs['contra'][1]], [txs['ipsi'][2], txs['contra'][2]], 'o-', color=color, linewidth=0.5, markersize=1, zorder=15)
+
+
     ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
-    ax.set_ylabel('z (centred)', fontsize=fs)
-    ax.set_xlim(-30, mean_back_length + mean_tail_length + 10)
-    ax.set_ylim(0,40)
-
-    ax.invert_xaxis()
-    ax.set_aspect('equal')
-    ax.legend(fontsize=fs)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.set_ylabel('y (centered)', fontsize=fs)
+    ax.set_zlabel('z (centred)', fontsize=fs)
+    ax.set_title('Average body shape (3D)', fontsize=fs)
     ax.tick_params(axis='both', which='major', labelsize=fs)
+    ax.view_init(elev=5.875059194642063, azim=-25.203643447562627)
+    x_range = np.nanmax(avg_x) - np.nanmin(avg_x)
+    y_range = np.nanmax(avg_y) - np.nanmin(avg_y)
+    z_range = np.nanmax(avg_z) - np.nanmin(avg_z)
+    ax.set_box_aspect([x_range, y_range, z_range])
+    ax.xaxis.pane.set_visible(False)
+    ax.yaxis.pane.set_visible(False)
+    ax.zaxis.pane.set_visible(False)
+    ax.xaxis.pane.set_edgecolor('w')
+    ax.yaxis.pane.set_edgecolor('w')
+    ax.zaxis.pane.set_edgecolor('w')
+    ax.grid(False)
+    ax.set_facecolor('white')
+    fig.patch.set_facecolor('white')
+    # dedup legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), fontsize=fs)
     plt.tight_layout()
-    save_path = os.path.join(savedir, "body_shape_APA_vs_Wash")
+    save_path = os.path.join(savedir, "body_shape_3D")
     plt.savefig(f"{save_path}.png", dpi=400)
     plt.savefig(f"{save_path}.svg", dpi=400)
     plt.close(fig)
 
-
-    #### HEAD PLOTS
-    # Only keep relevant labels
+    # HEAD PLOTS
     head_labels = ['Nose', 'EarR', 'EarL', 'Back1']
 
     # Gather for each phase: mean x/y/z for Nose, EarR, EarL, Back1
@@ -825,10 +1246,10 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
 
     # Align all heads so Back1 is at (0, 0, 0)
     for phase in phases:
-        base = head_data[phase][3, :]  # Back1: index 3 in head_labels
+        base = head_data[phase][3, :]  # Back1
         head_data[phase] = head_data[phase] - base
 
-    # 3D Plot
+    # 3D head triangle plots
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     fig = plt.figure(figsize=(6, 4))
     ax = fig.add_subplot(111, projection='3d')
@@ -838,14 +1259,10 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         color = pu.get_color_phase(phase)
         xs, ys, zs = xyz[:3, 0] * -1, xyz[:3, 1], xyz[:3, 2]
 
-        # If this is Wash (assume phases[1]), shift a tiny bit in z
         if i == 1:
-            zs = zs + 0.02  # Small shift to bring on top
+            zs = zs + 0.02  # small lift to help visibility
 
-        # Plot the triangle outline
-        ax.plot(np.append(xs, xs[0]), np.append(ys, ys[0]), np.append(zs, zs[0]), 'o-', color=color, label=phase,
-                zorder=10 + i)
-        # Plot the filled patch (triangle)
+        ax.plot(np.append(xs, xs[0]), np.append(ys, ys[0]), np.append(zs, zs[0]), 'o-', color=color, label=phase, zorder=10 + i)
         verts = [list(zip(xs, ys, zs))]
         poly = Poly3DCollection(verts, color=color, alpha=0.9, zorder=10 + i)
         ax.add_collection3d(poly)
@@ -855,20 +1272,19 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
     ax.set_ylabel('y (mm, rel. to Back1)', fontsize=fs)
     ax.set_zlabel('z (mm, rel. to Back1)', fontsize=fs)
     ax.set_title('Head angle (3D)', fontsize=fs)
-    ax.view_init(elev=3.455504227316453, azim=-82.90072343763637)
-    ax.legend()
-    # Remove all panes (background walls)
+    ax.view_init(elev=8.78236413268246, azim=-83.0788319960298)
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), fontsize=fs)
     ax.xaxis.pane.set_visible(False)
     ax.yaxis.pane.set_visible(False)
     ax.zaxis.pane.set_visible(False)
-    # Also remove the edges around panes (optional)
     ax.xaxis.pane.set_edgecolor('w')
     ax.yaxis.pane.set_edgecolor('w')
     ax.zaxis.pane.set_edgecolor('w')
-    # remove grid and background
     ax.grid(False)
     ax.set_facecolor('white')
-    fig.patch.set_facecolor('white')  # or 'none' for transparent
+    fig.patch.set_facecolor('white')
     plt.tight_layout()
     plt.savefig(os.path.join(savedir, "head_angle_3D.png"), dpi=400)
     plt.savefig(os.path.join(savedir, "head_angle_3D.svg"), dpi=400)
@@ -1076,6 +1492,125 @@ def across_mice_L_R_percentage(TransitioningPaws, savedir):
     plt.close()
 
 
+def plot_gait_features_corrs(features, stride, phases, savedir, fs=7):
+    mice = features.index.get_level_values(1).unique()
+    feature_list = ['Stride duration', 'Walking speed', 'Duty factor', 'Cadence',
+                    'Propulsion duration', 'Brake duration', 'Swing velocity']
+    short_to_long = {v: k for k, v in short_names.items()}
+
+    # tick formatter: no dps when |x| >= 1, else 1 dp; also clean up -0
+    def smart_fmt(x, _pos):
+        if abs(x) >= 1:
+            s = f"{int(round(x))}"
+        else:
+            s = f"{x:.1f}"
+        return "0" if s in ("-0", "-0.0", "0.0") else s
+
+    for feat in feature_list:
+        fig, ax = plt.subplots(figsize=(2, 1.5))
+        all_means = []
+        all_CIs = []
+
+        for mouse in mice:
+            long_feat_name = short_to_long[feat]  # short key used in df columns
+            data = features.loc(axis=0)[stride, mouse].loc(axis=1)[long_feat_name]
+
+            phase_means = np.zeros(len(phases))
+            phase_CIs = np.zeros(len(phases))
+            for i, phase in enumerate(phases):
+                phase_runs = expstuff['condition_exp_runs']['APAChar']['Extended'][phase]
+                phase_data = data.loc(axis=0)[phase_runs[0]:phase_runs[-1]]
+
+                phase_means[i] = np.nanmean(phase_data)
+                phase_CIs[i] = np.nanstd(phase_data) / np.sqrt(len(phase_data)) * 1.96  # 95% CI
+
+            all_means.append(phase_means)
+            all_CIs.append(phase_CIs)
+
+            mouse_marker = pu.get_marker_style_mice(mouse)
+            mouse_colour = pu.get_color_mice(mouse)
+
+            ax.errorbar(phase_means[0], phase_means[1],
+                        xerr=phase_CIs[0], yerr=phase_CIs[1],
+                        fmt='.', color=mouse_colour, alpha=1,
+                        markersize=6, capsize=1, elinewidth=0.5, markeredgewidth=0.5, label=mouse) # markersize was 5
+
+
+        all_means = np.array(all_means)
+        all_CIs = np.array(all_CIs)
+
+        total_mean = np.nanmean(all_means, axis=0)
+        print(f"Total means for {feat}:\nAPA: {total_mean[0]:.2f}, Wash: {total_mean[1]:.2f}")
+
+        # plot the overall mean as a large dot
+        ax.plot(total_mean[0], total_mean[1], marker='x', color='black', markersize=8, label='Mean across mice', zorder=3)
+
+        # compute independent x and y ranges with 10 percent padding
+        x_high = np.nanmax(all_means[:, 0] + all_CIs[:, 0])
+        x_low  = np.nanmin(all_means[:, 0] - all_CIs[:, 0])
+        y_high = np.nanmax(all_means[:, 1] + all_CIs[:, 1])
+        y_low  = np.nanmin(all_means[:, 1] - all_CIs[:, 1])
+
+        x_span = x_high - x_low
+        y_span = y_high - y_low
+
+        # choose increments per axis
+        def choose_inc(span):
+            if span < 1:
+                return 0.1
+            elif span < 10:
+                return 2
+            elif span < 100:
+                return 25
+            elif span < 500:
+                return 250
+            else:
+                return 500
+
+        x_inc = choose_inc(x_span)
+        y_inc = choose_inc(y_span)
+
+        # round outward to chosen increments
+        x_min = np.floor(x_low / x_inc) * x_inc
+        x_max = np.ceil(x_high / x_inc) * x_inc
+        y_min = np.floor(y_low / y_inc) * y_inc
+        y_max = np.ceil(y_high / y_inc) * y_inc
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+
+        # ticks - let Matplotlib place them from our increments
+        ax.set_xticks(np.arange(x_min, x_max + 0.5 * x_inc, x_inc))
+        ax.set_yticks(np.arange(y_min, y_max + 0.5 * y_inc, y_inc))
+
+        # smart tick formatting for decimals
+        ax.xaxis.set_major_formatter(FuncFormatter(smart_fmt))
+        ax.yaxis.set_major_formatter(FuncFormatter(smart_fmt))
+
+        # draw equality line within visible overlap
+        lo = max(x_min, y_min)
+        hi = min(x_max, y_max)
+        if hi > lo:
+            ax.plot([lo, hi], [lo, hi], linestyle='--', linewidth=0.5, color='gray', zorder=0)
+
+        ax.set_xlabel(phases[0], fontsize=fs)
+        ax.set_ylabel(phases[1], fontsize=fs)
+        ax.set_title(feat, fontsize=fs)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.tick_params(axis='both', which='major', labelsize=fs)
+        ax.set_aspect('auto')  # ensure no forced equal aspect
+
+        # ax.legend(fontsize=fs)
+
+        # plt.tight_layout()
+        plt.subplots_adjust(left=0.25, bottom=0.25, right=0.9, top=0.85)
+        save_path = os.path.join(savedir, f"corrs_{feat}_{phases[0]}_{phases[1]}")
+        plt.savefig(f"{save_path}.png", dpi=400)
+        plt.savefig(f"{save_path}.svg", dpi=400)
+        plt.close()
+
+
 
 
 
@@ -1107,7 +1642,10 @@ angle_save_dir = r"H:\Characterisation_v2\Angles"
 if not os.path.exists(angle_save_dir):
     os.makedirs(angle_save_dir)
 
+plot_gait_features_corrs(data_LH['feature_data_notscaled'], stride=-1, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7)
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 plot_nose_back_tail_averages(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 plot_limb_positions_average(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 
 plot_angles(data_LH['feature_data_notscaled'], phases=['APA2', 'Wash2'], stride=-1,

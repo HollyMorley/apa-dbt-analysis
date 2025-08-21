@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from curlyBrace import curlyBrace
 import numpy as np
 import matplotlib.colors as mcolors
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
 
 def add_vertical_brace_curly(ax, y0, y1, x, xoffset, label=None, k_r=0.1, int_line_num=2, fontdict=None, rot_label=0, **kwargs):
     """
@@ -349,4 +350,23 @@ def plot_phase_bars():
     patch2.set_clip_on(False)
     patch3.set_clip_on(False)
     patch4.set_clip_on(False)
+
+
+def make_phase_cmap(base_color, light=0.75, dark=0.6, name="phase_grad"):
+    """
+    Create a light-to-dark colormap from a base color.
+    light: fraction blended toward white for the start color (0..1)
+    dark:  fraction blended toward black for the end color (0..1)
+    """
+    base = np.array(to_rgb(base_color))
+
+    def blend_to(target, t):
+        return (1 - t) * base + t * np.array(target)
+
+    light_rgb = blend_to((1, 1, 1), light)  # toward white
+    dark_rgb  = blend_to((0, 0, 0), dark)   # toward black
+
+    colors = np.vstack([light_rgb, base, dark_rgb])
+    return LinearSegmentedColormap.from_list(name, colors, N=256)
+
 

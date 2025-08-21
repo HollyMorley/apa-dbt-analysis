@@ -28,10 +28,10 @@ base_save_dir_no_c = os.path.join(paths['plotting_destfolder'], f'FeatureReducti
 # ----------------------- Individual running settings: -----------------------
 instance_settings = [
     {
-        "condition": 'APAChar_HighLow',
+        "condition": 'APAChar_LowHigh',
         "exp": 'Extended',
         "day": None,
-        "compare_condition": 'APAChar_LowHigh',
+        "compare_condition": 'APAChar_HighLow',
     },
     # {
     #     "condition": 'APAChar_HighLow',
@@ -58,9 +58,9 @@ global_settings = {
     "pcs_to_show": 60,
     "pcs_to_use": 12,
     "pcs_to_plot": 8,
-    "use_LH_pcs": True, ## !!!
+    "use_LH_pcs": False, ## !!!
     "use_LH_reg_model": False, ## !!!
-    "normalise_to_LH_wash": True, ## !!!
+    "normalise_to_LH_wash": False, ## !!!
     "normalise_wash_nullspace": False, ## !!!
     #"multi_strides": True,
     "overwrite_FeatureSelection": False,

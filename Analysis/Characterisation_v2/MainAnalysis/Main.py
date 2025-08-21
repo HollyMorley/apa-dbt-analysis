@@ -33,7 +33,7 @@ random.seed(42)
 np.random.seed(42)
 
 # base_save_dir_no_c = os.path.join(paths['plotting_destfolder'], f'Characterisation\\LH_res')
-base_save_dir_no_c = r"H:\Characterisation_v2\\HL"
+base_save_dir_no_c = r"H:\Characterisation_v2\\LH"
 
 
 def filter_data(data, phase):
