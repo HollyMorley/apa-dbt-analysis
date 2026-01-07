@@ -626,6 +626,7 @@ class GetSingleExpData:
             optimise = OptimizeCalibration.optimize(calibration_coords, cameras_extrinsics, cameras_intrinsics, base_path_name, self)
             new_calibration_data = optimise.optimise_calibration(debugging=True)
 
+            # Update the calibration parameters
             self.extrinsics = new_calibration_data['extrinsics']
             self.intrinsics = new_calibration_data['intrinsics']
             self.belt_coords_CCS = new_calibration_data['belt points CCS']

@@ -11,6 +11,7 @@ from scipy.interpolate import interp1d
 from matplotlib.ticker import FuncFormatter
 import re
 import matplotlib.patches as mpatches
+from scipy import stats
 
 from Helpers.Config_23 import *
 
@@ -368,13 +369,16 @@ def plot_limb_positions(raw_data, phases, savedir, fs=7):
                         marker='o', markersize=3, color='black', linewidth=1, label='Mean')
 
 
-def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7, n_interp=100):
+def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7, n_interp=100, stsw='st', bodypart='Toe', raw=False):
     # plot the position of the leading toe at the start of the stride and the end of the stride in APA and Wash phases
     mice = ['1035243', '1035244', '1035245', '1035246', '1035250', '1035297', '1035299', '1035301']
     y_midline = structural_stuff['belt_width'] / 2
     labels = ['Toe']
 
-    fig, ax = plt.subplots(figsize=(4, 2))
+    if raw:
+        fig, axs = plt.subplots(len(mice), 1, figsize=(4, 10), sharex=True)
+    else:
+        fig, ax = plt.subplots(figsize=(4, 2))
 
     all_arr = {}
     for phase in phases:
@@ -387,7 +391,7 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
             mouse_data = raw_data[mouse].droplevel('Day', axis=0)
             for r, run in enumerate(phase_runs):
                 if run not in mouse_runs[mouse]:
-                    print(f"Run {run} not in mouse {mouse} runs, skipping.")
+                    # print(f"Run {run} not in mouse {mouse} runs, skipping.")
                     continue
 
                 run_data = mouse_data.loc(axis=0)[run]
@@ -395,28 +399,65 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
                 transition_idx = run_data.index.get_level_values(level='FrameIdx')[
                     run_data.index.get_level_values('RunStage') == 'Transition'][0]
                 transition_paw = run_data.loc(axis=1)['initiating_limb'].loc(axis=0)['Transition', transition_idx]
+
+                # check for sliding trials and skip them
+                if (run_data.loc(axis=1)['initiating_limb'].str.contains('slid', na=False).any()
+                        and run_data.loc(axis=0)['Transition', transition_idx].loc[transition_paw,'SwSt_discrete'] != '1'):
+                    print(f"Skipping mouse {mouse} run {run} due to sliding trial.")
+                    continue
+
                 stance_periods_mask = run_data.loc(axis=0)['RunStart'].loc(axis=1)[transition_paw, 'SwSt'] == \
                                       locostuff['swst_vals_2025']['st']
                 stance_periods_idxs = run_data.loc(axis=0)['RunStart'].index.get_level_values(level='FrameIdx')[
                     stance_periods_mask]
-                stance_chunks = utils.Utils().find_blocks(stance_periods_idxs, gap_threshold=10, block_min_size=10)
+                stance_chunks = utils.Utils().find_blocks(stance_periods_idxs, gap_threshold=6, block_min_size=6)
                 last_stance_idx = stance_chunks[-1][0]
 
                 stride_data = run_data.loc(axis=0)['RunStart', np.arange(last_stance_idx, transition_idx)]
                 bp_side = transition_paw.split('Forepaw')[1]
-                toe_name = 'ForepawToe' + bp_side
-                x = stride_data.loc(axis=1)[toe_name, 'x'].values
-                y = stride_data.loc(axis=1)[toe_name, 'y'].values
-                z = stride_data.loc(axis=1)[toe_name, 'z'].values
+
+                if bodypart == 'Toe':
+                    toe_name = 'ForepawToe' + bp_side
+                    x = stride_data.loc(axis=1)[toe_name, 'x'].values
+                    y = stride_data.loc(axis=1)[toe_name, 'y'].values
+                    z = stride_data.loc(axis=1)[toe_name, 'z'].values
+                elif bodypart == 'Tailbase':
+                    x = stride_data.loc(axis=1)['Tail1', 'x'].values
+                    y = stride_data.loc(axis=1)['Tail1', 'y'].values
+                    z = stride_data.loc(axis=1)['Tail1', 'z'].values
+
+                # if x[0] > 460:
+                #     print(f"Mouse {mouse} run {run}")
 
                 if bp_side == 'L':
                     # Need to flip the y coords to mirror the left side to the right side
                     mirrored_y = 2 * y_midline - y
                     y = mirrored_y
 
-                first_x = x[0]
-                first_y = y[0]
-                first_z = z[0]
+                if stsw == 'st':
+                    first_x = x[0]
+                    first_y = y[0]
+                    first_z = z[0]
+                elif stsw == 'sw':
+                    # get swing start frame
+                    sw_start_mask = stride_data.loc(axis=1)[transition_paw, 'SwSt_discrete'].values == locostuff['swst_vals_2025']['sw']
+                    sw_start_idxs = stride_data.index.get_level_values(level='FrameIdx')[sw_start_mask]
+                    if len(sw_start_idxs) == 0:
+                        continue
+                    elif len(sw_start_idxs) == 1:
+                        sw_start_idx = sw_start_idxs[0]
+                        sw_start_position = np.where(stride_data.index.get_level_values(level='FrameIdx') == sw_start_idx)[0][0]
+
+                        first_x = x[sw_start_position]
+                        first_y = y[sw_start_position]
+                        first_z = z[sw_start_position]
+                    else:
+                        # print(f"skipped run {run} for mouse {mouse} because multiple swing starts found")
+                        continue
+
+                    # first_x = x[-1]
+                    # first_y = y[-1]
+                    # first_z = z[-1]
                 last_x = x[-1]
                 last_y = y[-1]
                 last_z = z[-1]
@@ -429,30 +470,105 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
                 arr[m, r, 2, 1] = last_z
         all_arr[phase] = arr
 
-        first_mean_x = np.nanmean(arr[:, :, 0, 0], axis=(0, 1))
-        first_mean_y = np.nanmean(arr[:, :, 1, 0], axis=(0, 1))
-        first_mean_z = np.nanmean(arr[:, :, 2, 0], axis=(0, 1))
-        last_mean_x = np.nanmean(arr[:, :, 0, 1], axis=(0, 1))
-        last_mean_y = np.nanmean(arr[:, :, 1, 1], axis=(0, 1))
-        last_mean_z = np.nanmean(arr[:, :, 2, 1], axis=(0, 1))
+        if not raw:
+            first_mean_x = np.nanmean(arr[:, :, 0, 0], axis=(0, 1))
+            first_mean_y = np.nanmean(arr[:, :, 1, 0], axis=(0, 1))
+            first_mean_z = np.nanmean(arr[:, :, 2, 0], axis=(0, 1))
+            last_mean_x = np.nanmean(arr[:, :, 0, 1], axis=(0, 1))
+            last_mean_y = np.nanmean(arr[:, :, 1, 1], axis=(0, 1))
+            last_mean_z = np.nanmean(arr[:, :, 2, 1], axis=(0, 1))
 
-        # plot x by y
-        color = pu.get_color_phase(phase)
-        ax.scatter(first_mean_x, first_mean_y, color=color, label='Start', marker='x', s=10, zorder=5)
-        ax.scatter(last_mean_x, last_mean_y, color=color, label='End', marker='x', s=10, zorder=5)
-        ax.plot([470,470], [0,50], color='k', linestyle='--', linewidth=0.5, zorder=0)
+            print(f"{phase} {bodypart} {stsw} first (x,y,z): ({first_mean_x:.1f}, {first_mean_y:.1f}, {first_mean_z:.1f})"
+                    f" last (x,y,z): ({last_mean_x:.1f}, {last_mean_y:.1f}, {last_mean_z:.1f})")
 
-    ax.set_ylim(0, 50)
-    ax.set_yticks(np.arange(0, 51, 25))
-    ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
-    ax.set_ylabel('Y (mm)', fontsize=fs)
-    ax.set_xlim(0, 600)
-    ax.set_xticks([0,470, 600])
-    ax.set_xticklabels([0, 470, 600], fontsize=fs)
-    ax.set_xlabel('X (mm)', fontsize=fs)
-    ax.set_aspect('equal', adjustable='box')
+            # plot x by y
+            color = pu.get_color_phase(phase)
+            ax.scatter(first_mean_x, first_mean_y, color=color, label='Start', marker='x', s=10, zorder=5)
+            ax.scatter(last_mean_x, last_mean_y, color=color, label='End', marker='x', s=10, zorder=5)
+            ax.plot([470,470], [0,50], color='k', linestyle='--', linewidth=0.5, zorder=0)
+        else:
+            num_mice = arr.shape[0]
+            color = pu.get_color_phase(phase)
 
-    savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}")
+            # Calculate mouse means for this phase
+            mouse_mean_first_x = np.nanmean(arr[:, :, 0, 0], axis=1) # shape (num_mice,)
+            # mouse_mean_first_y = np.nanmean(arr[:, :, 1, 0], axis=1) # shape (num_mice,)
+            mouse_mean_last_x = np.nanmean(arr[:, :, 0, 1], axis=1) # shape (num_mice,)
+            # mouse_mean_last_y = np.nanmean(arr[:, :, 1, 1], axis=1) # shape (num_mice,)
+
+            for mouse in range(num_mice):
+                first_xs = arr[mouse, :, 0, 0]
+                # first_ys = arr[mouse, :, 1, 0]
+                last_xs = arr[mouse, :, 0, 1]
+                # last_ys = arr[mouse, :, 1, 1]
+
+                # Remove NaNs
+                first_xs_valid = first_xs[~np.isnan(first_xs)]
+                last_xs_valid = last_xs[~np.isnan(last_xs)]
+
+                positions = [0, 1]
+
+                parts = axs[mouse].violinplot([first_xs_valid, last_xs_valid],
+                                              positions=positions,
+                                              vert=False,
+                                              widths=5,
+                                              showmeans=True,
+                                              showmedians=False)
+                for pc in parts['bodies']:
+                    pc.set_facecolor(color)
+                    pc.set_alpha(0.3)
+                    pc.set_edgecolor(color)
+
+                # Colour the mean lines
+                parts['cmeans'].set_color(color)
+                parts['cmeans'].set_linewidth(2)
+
+                # Colour other elements
+                for partname in ('cbars', 'cmins', 'cmaxes'):
+                    parts[partname].set_edgecolor(color)
+                    parts[partname].set_linewidth(1)
+
+                # axs[mouse].scatter(first_xs, first_ys, edgecolors='none', facecolors=color, label='Start', marker='.', s=8, zorder=5, alpha=0.5)
+                # axs[mouse].scatter(last_xs, last_ys, edgecolors=color, facecolors='none', linewidths=0.3, label='End', marker='.', s=8, zorder=5, alpha=0.5)
+                #
+                # axs[mouse].scatter(mouse_mean_first_x[mouse], mouse_mean_first_y[mouse], color=color,
+                #                    marker='x', s=30, linewidths=1.5, zorder=10, label=f'{phase} mean start')
+                # axs[mouse].scatter(mouse_mean_last_x[mouse], mouse_mean_last_y[mouse], color=color,
+                #                    marker='x', s=30, linewidths=1.5, zorder=10, label=f'{phase} mean end')
+
+                axs[mouse].plot([470, 470], [0, 50], color='k', linestyle='--', linewidth=0.5, zorder=0)
+
+                axs[mouse].set_title(f"{mice[mouse]}", fontsize=fs)
+                axs[mouse].set_ylim(0, 50)
+                axs[mouse].set_yticks(np.arange(0, 51, 25))
+                axs[mouse].set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
+                axs[mouse].set_ylabel('Y (mm)', fontsize=fs)
+                axs[mouse].set_xlim(0, 600)
+                axs[mouse].set_xticks([0, 470, 600])
+                axs[mouse].set_xticklabels([0, 470, 600], fontsize=fs)
+                axs[mouse].set_xlabel('X (mm)', fontsize=fs)
+                axs[mouse].set_aspect('equal', adjustable='box')
+
+    def set_formatting(ax):
+        ax.set_ylim(0, 50)
+        ax.set_yticks(np.arange(0, 51, 25))
+        ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
+        ax.set_ylabel('Y (mm)', fontsize=fs)
+        ax.set_xlim(0, 600)
+        ax.set_xticks([0,470, 600])
+        ax.set_xticklabels([0, 470, 600], fontsize=fs)
+        ax.set_xlabel('X (mm)', fontsize=fs)
+        ax.set_aspect('equal', adjustable='box')
+
+    if raw:
+        for mouse in range(num_mice):
+            set_formatting(axs[mouse])
+        savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}_{stsw}_{bodypart}_all_mice")
+
+    else:
+        set_formatting(ax)
+        savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}_{stsw}_{bodypart}")
+
     fig.savefig(f"{savepath}.png", dpi=400)
     fig.savefig(f"{savepath}.svg", dpi=400)
 
@@ -560,6 +676,141 @@ def plot_toe_trajectory_real_distance(raw_data, mouse_runs, phases, savedir, fs=
         fig.savefig(f"{save_path}.svg", dpi=400)
 
         plt.close(fig)
+
+    # # Add extra plot for the stride lengths across all runs and mice
+    #
+    # stride_lengths_phases = {phase: None for phase in phases}
+    # for phase in phases:
+    #     toe_x = all_arr[phase][:, :, 0, 0, :]  # shape: (n_mice, n_runs, n_interp)
+    #     stride_lengths = toe_x[:, :, -1] - toe_x[:, :, 0]  # shape: (n_mice, n_runs)
+    #     # mean_stride_lengths = np.nanmean(stride_lengths, axis=(1)) # shape: (n_mice,)
+    #     stride_lengths_phases[phase] = stride_lengths
+    #
+    #
+    # fig, ax = plt.subplots(figsize=(2.5, 2))
+    # mouse_medians_byPhase = [np.nanmedian(stride_lengths_phases[phase], axis=1) for phase in phases]
+    # mouse_medians_byPhase = np.array(mouse_medians_byPhase).T  # shape: (n_mice, n_phases)
+    # phase_means = np.nanmedian(mouse_medians_byPhase, axis=0)
+    #
+    # for m in range(mouse_medians_byPhase.shape[0]):
+    #     ax.plot([0, 1], mouse_medians_byPhase[m, :], color='gray', alpha=0.5, linewidth=0.8)
+    # ax.scatter([0, 1], phase_means, color='k')
+    #
+    # # wilcoxon test
+    # stat, p_value = stats.wilcoxon(mouse_medians_byPhase[:,0], mouse_medians_byPhase[:,1])
+    #
+    # # Determine significance stars
+    # if p_value < 0.001:
+    #     stars = '***'
+    # elif p_value < 0.01:
+    #     stars = '**'
+    # elif p_value < 0.05:
+    #     stars = '*'
+    # else:
+    #     stars = 'ns'
+    # # Plot stars above the data
+    # if stars != 'ns':
+    #     y_pos = max(phase_means) * 1.1
+    #     ax.text(0.5, y_pos, stars,
+    #             ha='center', va='bottom', fontsize=10)
+    #
+
+
+    # n_mice = stride_lengths_phases[phases[0]].shape[0]
+    # x_positions = np.arange(n_mice)
+    # offset = 0.15  # offset between phases for the same mouse
+    #
+    # # Store max values for each mouse to position significance stars
+    # max_values = np.zeros(n_mice)
+    #
+    # for i, phase in enumerate(phases):
+    #     color = pu.get_color_phase(phase)
+    #     x_pos = x_positions + (i - 0.5) * offset  # shift left/right for each phase
+    #
+    #     for mouse_idx in range(n_mice):
+    #         mouse_data = stride_lengths_phases[phase][mouse_idx, :]
+    #         mouse_median = np.nanmedian(mouse_data)
+    #
+    #
+    #         # Remove NaNs for this mouse
+    #         valid_data = mouse_data[~np.isnan(mouse_data)]
+    #
+    #         if len(valid_data) > 0:
+    #             # Scatter individual runs
+    #             ax.scatter(np.full(len(valid_data), x_pos[mouse_idx]),
+    #                        valid_data,
+    #                        color=color,
+    #                        alpha=0.3,
+    #                        s=20)
+    #
+    #             # Plot mean
+    #             # mean_val = np.nanmean(valid_data)
+    #             median_val = np.nanmedian(valid_data)
+    #             # sem_val = np.nanstd(valid_data) / np.sqrt(len(valid_data))
+    #             # ci_val = 1.96 * np.nanstd(valid_data) / np.sqrt(len(valid_data))
+    #             # Bootstrap confidence interval
+    #             n_bootstrap = 10000
+    #             bootstrap_medians = []
+    #             for _ in range(n_bootstrap):
+    #                 resample = np.random.choice(valid_data, size=len(valid_data), replace=True)
+    #                 bootstrap_medians.append(np.median(resample))
+    #
+    #             ci_lower = np.percentile(bootstrap_medians, 2.5)
+    #             ci_upper = np.percentile(bootstrap_medians, 97.5)
+    #             ci_val = median_val - ci_lower  # for symmetric error bar, use larger of the two
+    #
+    #
+    #             ax.plot(x_pos[mouse_idx], median_val, 'o',
+    #                     color='k', markersize=8, markeredgecolor='white',
+    #                     markeredgewidth=0.5)
+    #
+    #             # Plot SEM
+    #             ax.errorbar(x_pos[mouse_idx], median_val, yerr=ci_val,
+    #                         color='k', capsize=3, linewidth=1.5)
+    #
+    #             # Track max value for star placement
+    #             max_values[mouse_idx] = max(max_values[mouse_idx], median_val + ci_val)
+    #
+    # # Add significance tests between phases for each mouse
+    # for mouse_idx in range(n_mice):
+    #     data_phase1 = stride_lengths_phases[phases[0]][mouse_idx, :]
+    #     data_phase2 = stride_lengths_phases[phases[1]][mouse_idx, :]
+    #
+    #     # Remove NaNs
+    #     valid_data1 = data_phase1[~np.isnan(data_phase1)]
+    #     valid_data2 = data_phase2[~np.isnan(data_phase2)]
+    #
+    #     if len(valid_data1) > 1 and len(valid_data2) > 1:
+    #         # Perform t-test
+    #         # t_stat, p_value = stats.ttest_rel(valid_data1, valid_data2)
+    #         stat, p_value = stats.wilcoxon(valid_data1, valid_data2)
+    #
+    #         # Determine significance stars
+    #         if p_value < 0.001:
+    #             stars = '***'
+    #         elif p_value < 0.01:
+    #             stars = '**'
+    #         elif p_value < 0.05:
+    #             stars = '*'
+    #         else:
+    #             stars = 'ns'
+    #
+    #         # Plot stars above the data
+    #         if stars != 'ns':
+    #             y_pos = max_values[mouse_idx] * 1.1
+    #             ax.text(x_positions[mouse_idx], y_pos, stars,
+    #                     ha='center', va='bottom', fontsize=10)
+    #
+    # ax.set_xlabel('Mouse')
+    # ax.set_ylabel('Stride length')
+    # ax.set_xticks(x_positions)
+    # ax.set_xticklabels([f'{i + 1}' for i in range(n_mice)])
+    #
+    # plt.tight_layout()
+    # plt.show()
+    #
+
+
 
 
 
@@ -1010,8 +1261,10 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
                     tR_y = 2 * ymidline - tR_y
                     tL_y = 2 * ymidline - tL_y
 
-                TR_rel = (tR_x - back1_x_t, tR_y - y_ref, tR_z)
-                TL_rel = (tL_x - back1_x_t, tL_y - y_ref, tL_z)
+                # TR_rel = (tR_x - back1_x_t, tR_y - y_ref, tR_z)
+                # TL_rel = (tL_x - back1_x_t, tL_y - y_ref, tL_z)
+                TR_rel = (back1_x_t - tR_x, y_ref - tR_y, tR_z)
+                TL_rel = (back1_x_t - tL_x, y_ref - tL_y, tL_z)
 
                 if transition_paw_side == 'R':
                     ipsi_rel.append(TR_rel)
@@ -1135,9 +1388,9 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         if type == 'side':
             ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
             ax.set_ylabel('z', fontsize=fs)
-            ax.set_xlim(-30, 150)
-            ax.set_xticks(np.arange(-25, 151, 25))
-            ax.set_xticklabels(np.arange(-25, 151, 25), fontsize=fs)
+            ax.set_xlim(-60, 150)
+            ax.set_xticks(np.arange(-50, 151, 25))
+            ax.set_xticklabels(np.arange(-50, 151, 25), fontsize=fs)
             ax.set_ylim(-5, 40)
             ax.set_yticks(np.arange(0, 41, 20))
             ax.set_yticklabels(np.arange(0, 41, 20), fontsize=fs)
@@ -1154,9 +1407,9 @@ def plot_nose_back_tail_averages(raw_data, mouse_runs, phases, savedir, fs=7, n_
         elif type == 'top':
             ax.set_xlabel('x (mm, fixed template)', fontsize=fs)
             ax.set_ylabel('y (centered)', fontsize=fs)
-            ax.set_xlim(-30, 150)
-            ax.set_xticks(np.arange(-25, 151, 25))
-            ax.set_xticklabels(np.arange(-25, 151, 25), fontsize=fs)
+            ax.set_xlim(-60, 150)
+            ax.set_xticks(np.arange(-50, 151, 25))
+            ax.set_xticklabels(np.arange(-50, 151, 25), fontsize=fs)
             ax.set_ylim(-30, 30)
             ax.set_yticks(np.arange(-25, 26, 25))
             ax.set_yticklabels(np.arange(-25, 26, 25), fontsize=fs)
@@ -1642,10 +1895,14 @@ angle_save_dir = r"H:\Characterisation_v2\Angles"
 if not os.path.exists(angle_save_dir):
     os.makedirs(angle_save_dir)
 
+# plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe', raw=True)
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw')
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Tailbase')
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw', bodypart='Tailbase')
+plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe')
 plot_gait_features_corrs(data_LH['feature_data_notscaled'], stride=-1, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7)
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 plot_nose_back_tail_averages(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
-plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 plot_limb_positions_average(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 
 plot_angles(data_LH['feature_data_notscaled'], phases=['APA2', 'Wash2'], stride=-1,

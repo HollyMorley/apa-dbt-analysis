@@ -12,8 +12,8 @@ from matplotlib.transforms import Bbox
 
 
 # Load video and deeplabcut coordinates
-video_path = r"H:\Dual-belt_APAs\videos\Round_3\HM_20230316_APACharExt_FAA-1035246_LR_overhead_1.avi"
-coord_path = (r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round2\20230316\HM_20230316_APACharExt_FAA-1035246_LR_overhead_1DLC_resnet50_DLC_DualBeltAug3shuffle1_1000000.h5")
+video_path = r"C:\Users\hmorl\Documents\HM_20230316_APACharExt_FAA-1035246_LR_side_1.avi"
+coord_path = (r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round3\20230316\HM_20230316_APACharExt_FAA-1035246_LR_side_1DLC_resnet50_DLC_DualBeltAug2shuffle1_1200000.h5")
     #(r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round2\20230316\HM_20230316_APACharExt_FAA-1035246_LR_front_1DLC_resnet50_DLC_DualBeltAug3shuffle1_1000000.h5")
     #(r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round3\20230316\HM_20230316_APACharExt_FAA-1035246_LR_side_1DLC_resnet50_DLC_DualBeltAug2shuffle1_1200000.h5")
 

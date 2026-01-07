@@ -21,12 +21,19 @@ from Helpers.Config_23 import *
 from Helpers.utils import Utils
 from Analysis.Characterisation_v2.AnalysisTools import Regression as reg
 
-# load LH pred data
-LH_MultiFeatPath = r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\APAChar_LowHigh_Extended\MultiFeaturePredictions"
-LH_preprocessed_data_file_path = r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\preprocessed_data_APAChar_LowHigh.pkl"
-LH_stride_0_preprocessed_data_file_path = r"H:\Characterisation_v2\LH_LHpcsonly_res_0_APA2Wash2\preprocessed_data_APAChar_LowHigh.pkl"
-LH_pred_path = f"{LH_MultiFeatPath}\\pca_predictions_APAChar_LowHigh.pkl"
-LH_pca_path = f"{LH_MultiFeatPath}\\pca_APAChar_LowHigh.pkl"
+condition = 'LowMid'
+
+if condition == 'LowHigh':
+    # load LH pred data
+    LH_MultiFeatPath = r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\APAChar_LowHigh_Extended\MultiFeaturePredictions"
+    LH_preprocessed_data_file_path = r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\preprocessed_data_APAChar_LowHigh.pkl"
+    LH_stride_0_preprocessed_data_file_path = r"H:\Characterisation_v2\LH_LHpcsonly_res_0_APA2Wash2\preprocessed_data_APAChar_LowHigh.pkl"
+    LH_pred_path = f"{LH_MultiFeatPath}\\pca_predictions_APAChar_LowHigh.pkl"
+    LH_pca_path = f"{LH_MultiFeatPath}\\pca_APAChar_LowHigh.pkl"
+elif condition == 'LowMid':
+
+
+
 with open(LH_preprocessed_data_file_path, 'rb') as f:
     data = pickle.load(f)
     LH_preprocessed_data = data['feature_data']

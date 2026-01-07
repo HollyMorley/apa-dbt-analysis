@@ -210,6 +210,80 @@ class WhenAPA:
             zs.append(np.arctanh(C_clipped))
         return np.tanh(np.nanmean(zs, axis=0))
 
+    def _compute_stats(self, baseline_stride, compare_stride,
+                             run_type, pcs_byStride_interpolated, pcs_to_plot=None, eps=1e-6):
+        """
+        Returns (mean_delta, stars) where
+          mean_delta[i,j] = average over mice of (r_cmp[i,j] - r_base[i,j])
+          stars[i,j]     = '', '*', '**', or '***' depending on p-value
+        of a one-sample t-test that Δr ≠ 0.
+        """
+        pcs_base = pcs_byStride_interpolated[baseline_stride]
+        pcs_cmp = pcs_byStride_interpolated[compare_stride]
+        mice = pcs_base.index.get_level_values(0).unique()
+
+        n_full = global_settings['pcs_to_use']
+        # If pcs_to_plot is None, use all
+        pcs_to_plot = pcs_to_plot if pcs_to_plot is not None else list(range(n_full))
+        n = len(pcs_to_plot)
+        deltas_restricted = []
+
+        for midx in mice:
+            pc1 = pcs_base.loc[midx]
+            pc2 = pcs_cmp.loc[midx]
+            if run_type == 'APAlate':
+                runs = expstuff['condition_exp_runs']['APAChar']['Extended']['APA2']
+                pc1 = pc1.loc[runs]
+                pc2 = pc2.loc[runs]
+            elif run_type == 'Washlate':
+                runs = expstuff['condition_exp_runs']['APAChar']['Extended']['Wash2']
+                pc1 = pc1.loc[runs]
+                pc2 = pc2.loc[runs]
+
+            # compute and clip both matrices
+            Cb = np.clip(self._compute_corr_matrix(pc1, pc1), -1 + eps, 1 - eps)
+            Cc = np.clip(self._compute_corr_matrix(pc1, pc2), -1 + eps, 1 - eps)
+            Cb = Cb[np.ix_(pcs_to_plot, pcs_to_plot)]
+            Cc = Cc[np.ix_(pcs_to_plot, pcs_to_plot)]
+            deltas_restricted.append(Cc)
+
+        deltas_restricted = np.stack(deltas_restricted, axis=0) # shape (n_mice, n_pcs, n_pcs)
+        mean_delta = np.nanmean(deltas_restricted, axis=0)
+
+        n = mean_delta.shape[0]
+        pvals = []
+        positions = []
+        # Collect all p-values
+        for i in range(n):
+            for j in range(n):
+                vals = deltas_restricted[:, i, j]
+                vals = vals[~np.isnan(vals)]
+                if len(vals) > 1:
+                    _, p = ttest_1samp(vals, 0.0)
+                else:
+                    p = 1.0
+                pvals.append(p)
+                positions.append((i, j))
+
+        # Apply Holm-Bonferroni correction
+        reject, pvals_corrected, _, _ = multipletests(pvals, alpha=0.05, method='holm')
+
+        stars = np.full((n, n), '', dtype=object)
+        for idx, (i, j) in enumerate(positions):
+            p = pvals_corrected[idx]
+            if reject[idx]:
+                if p < 0.001:
+                    stars[i, j] = '***'
+                elif p < 0.01:
+                    stars[i, j] = '**'
+                elif p < 0.05:
+                    stars[i, j] = '*'
+            else:
+                stars[i, j] = ''
+
+        return mean_delta, stars
+
+
     def _compute_delta_stats(self, baseline_stride, compare_stride,
                              run_type, pcs_byStride_interpolated, pcs_to_plot=None, eps=1e-6):
         """
@@ -582,13 +656,18 @@ class WhenAPA:
 
         pcs_to_plot = pcs_to_plot or list(range(global_settings['pcs_to_use']))
         # 1) raw heatmaps + scatters
-        for rt in ['All runs', 'APAlate', 'Washlate']:
+        for rt in ['APAlate', 'Washlate']: # 'All runs',
             for s in (-1, -2, -3):
                 mean_r = self._compute_mean_r(-1, s, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
                 self._plot_heatmap(mean_r, s, rt, fs=fs, pcs_to_plot=pcs_to_plot)
                 self._plot_scatter(-1, s, pcs_byStride_interpolated,
                                    fs=fs)  # You may want to modify _plot_scatter similarly
                 self._plot_density_grid(-1, s, pcs_byStride_interpolated, fs=fs, bins=60)
+
+            mean_full2, stars_full2 = self._compute_stats(-1, -2, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
+            mean_full3, stars_full3 = self._compute_stats(-1, -3, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
+            mean_full1, stars_full1 = self._compute_stats(-1, -1, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
+
 
             mean2, stars2 = self._compute_delta_stats(-1, -2, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
             mean3, stars3 = self._compute_delta_stats(-1, -3, rt, pcs_byStride_interpolated, pcs_to_plot=pcs_to_plot)
@@ -1019,14 +1098,14 @@ def main():
     when_apa = WhenAPA(LH_preprocessed_data, LH_stride0_preprocessed_data, LH_pred_data, LH_pca_data, save_dir)
 
     # when_apa.plot_stride_times()
-    #
-    # # Plot the accuracy of each stride model
-    # when_apa.plot_accuracy_of_each_stride_model()
-    # # when_apa.plot_corr_pc_weights_heatmap()
-    # when_apa.plot_corr_pcs_heatmap(pcs_to_plot=None)
-    # when_apa.plot_corr_pcs_heatmap(pcs_to_plot=[0,2,6])
+
+    # Plot the accuracy of each stride model
+    when_apa.plot_accuracy_of_each_stride_model()
+    when_apa.plot_corr_pc_weights_heatmap()
+    when_apa.plot_corr_pcs_heatmap(pcs_to_plot=None)
+    when_apa.plot_corr_pcs_heatmap(pcs_to_plot=[0,2,6])
     when_apa.plot_line_pcs_apa_vs_wash()
-    # when_apa.plot_pcs_timeseries_by_stride()
+    when_apa.plot_pcs_timeseries_by_stride()
 
 
 if __name__ == '__main__':

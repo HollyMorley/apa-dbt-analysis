@@ -420,8 +420,9 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
     else:
         p1_color = pu.get_color_speedpair(phases[0])
         p2_color = pu.get_color_speedpair(phases[1])
-    dark_color_p1 = pu.darken_color(p1_color, 0.7)
-    dark_color_p2 = pu.darken_color(p2_color, 0.7)
+
+    dark_color_p1 = pu.darken_color(p1_color, 0.35, to_black=True)
+    dark_color_p2 = pu.darken_color(p2_color, 0.35, to_black=True)
 
     x = np.arange(len(top_feats_pc))
     width = 0.35
@@ -431,16 +432,17 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
 
     mean_scatter_size = 25
     scatter_size = 8
+    line_scatter_length = 0.7
 
     # Create a figure with 3 subplots (loadings, phase values, and phase difference)
-    fig, axs = plt.subplots(4, 1, figsize=(4, 6))
+    fig, axs = plt.subplots(3, 1, figsize=(4, 6))
 
-    ### Subplot 0: Feature Loadings
-    axs[0].bar(x, top_feats_loadings, width * bar_multiple, alpha=0.7, color='k')
-    axs[0].set_xticks([])
-    axs[0].set_ylabel('Feature loading onto PC', fontsize=fs)
-    axs[0].set_ylim(-0.6, 0.6)
-    axs[0].set_yticks(np.arange(-0.5, 0.6, 0.5))
+    # ### Subplot 0: Feature Loadings
+    # axs[0].bar(x, top_feats_loadings, width * bar_multiple, alpha=0.7, color='k')
+    # axs[0].set_xticks([])
+    # axs[0].set_ylabel('Feature loading onto PC', fontsize=fs)
+    # axs[0].set_ylim(-0.6, 0.6)
+    # axs[0].set_yticks(np.arange(-0.5, 0.6, 0.5))
 
     # Compute p-values per feature for phase differences
     pvals = []
@@ -453,31 +455,35 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
     ### Subplot 1: Phase Z-scored Feature Values
     for i, feat in enumerate(top_feats_pc):
         # Scatter all mice, phase 1
-        axs[1].scatter([positions_p1[i]] * len(data_p1[i]), data_p1[i],
+        axs[0].scatter([positions_p1[i]] * len(data_p1[i]), data_p1[i],
                        color=p1_color, edgecolor='none', alpha=0.7, s=scatter_size, zorder=10, label=phases[0] if i == 0 else "")
         # Scatter all mice, phase 2
-        axs[1].scatter([positions_p2[i]] * len(data_p2[i]), data_p2[i],
+        axs[0].scatter([positions_p2[i]] * len(data_p2[i]), data_p2[i],
                        color=p2_color, edgecolor='none', alpha=0.7, s=scatter_size, zorder=10, label=phases[1] if i == 0 else "")
 
         # Overlay means as larger scatter point (phase colour, larger size)
-        axs[1].scatter(positions_p1[i], np.mean(data_p1[i]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
-        axs[1].scatter(positions_p2[i], np.mean(data_p2[i]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        # axs[0].scatter(positions_p1[i], np.mean(data_p1[i]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        # axs[0].scatter(positions_p2[i], np.mean(data_p2[i]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        axs[0].plot([positions_p1[i] - (width / 2) * line_scatter_length, positions_p1[i] + (width / 2) * line_scatter_length],
+                    [np.mean(data_p1[i]), np.mean(data_p1[i])], color=dark_color_p1, linewidth=2, zorder=20, solid_capstyle='projecting')
+        axs[0].plot([positions_p2[i] - (width / 2) * line_scatter_length, positions_p2[i] + (width / 2) * line_scatter_length],
+                    [np.mean(data_p2[i]), np.mean(data_p2[i])], color=dark_color_p2, linewidth=2, zorder=20, solid_capstyle='projecting')
 
     # Connect paired values for each mouse across phases (lines)
     for midx in feats_permouse_medians_p1.index:
         if midx in feats_permouse_medians_p2.index:
-            axs[1].plot([positions_p1, positions_p2],
+            axs[0].plot([positions_p1, positions_p2],
                         [feats_permouse_medians_p1.loc[midx], feats_permouse_medians_p2.loc[midx]],
-                        '-', alpha=0.2, color='gray', linewidth=1, zorder=1)
+                        '-', alpha=0.8, color='gray', linewidth=0.5, zorder=1)
 
-    pu.add_significance_stars(axs[1], positions_p1, positions_p2, data_p1, data_p2, pvals, fs=fs)
+    pu.add_significance_stars(axs[0], positions_p1, positions_p2, data_p1, data_p2, pvals, fs=fs)
 
     p1_patch = mpatches.Patch(color=p1_color, label=f'{phases[0]}')
     p2_patch = mpatches.Patch(color=p2_color, label=f'{phases[1]}')
-    axs[1].set_xticklabels('')
-    axs[1].set_ylabel('Feature magnitude (z)', fontsize=fs)
+    axs[0].set_xticklabels('')
+    axs[0].set_ylabel('Feature magnitude (z)', fontsize=fs)
     # legend labels
-    axs[1].legend(handles=[p1_patch, p2_patch], fontsize=fs, loc='upper right', bbox_to_anchor=(1.2, 1),
+    axs[0].legend(handles=[p1_patch, p2_patch], fontsize=fs, loc='upper right', bbox_to_anchor=(1.2, 1),
                   title='Phase', title_fontsize=fs)
 
     ### Subplot 2: Projection of features on PCA
@@ -502,30 +508,34 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
 
     for i, feat in enumerate(top_feats_pc):
         # Scatter all mice, phase 1
-        axs[2].scatter([positions_p1[i]] * len(weighted_df_p1[feat]), weighted_df_p1[feat].values,
+        axs[1].scatter([positions_p1[i]] * len(weighted_df_p1[feat]), weighted_df_p1[feat].values,
                        color=p1_color, edgecolor='none', alpha=0.7, s=scatter_size, zorder=10)
         # Scatter all mice, phase 2
-        axs[2].scatter([positions_p2[i]] * len(weighted_df_p2[feat]), weighted_df_p2[feat].values,
+        axs[1].scatter([positions_p2[i]] * len(weighted_df_p2[feat]), weighted_df_p2[feat].values,
                        color=p2_color, edgecolor='none', alpha=0.7, s=scatter_size, zorder=10)
 
         # Overlay means
-        axs[2].scatter(positions_p1[i], np.mean(weighted_df_p1[feat]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
-        axs[2].scatter(positions_p2[i], np.mean(weighted_df_p2[feat]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        # axs[1].scatter(positions_p1[i], np.mean(weighted_df_p1[feat]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        # axs[1].scatter(positions_p2[i], np.mean(weighted_df_p2[feat]), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        axs[1].plot([positions_p1[i] - (width / 2) * line_scatter_length, positions_p1[i] + (width / 2) * line_scatter_length],
+                    [np.mean(weighted_df_p1[feat]), np.mean(weighted_df_p1[feat])], color=dark_color_p1, linewidth=2, zorder=20, solid_capstyle='projecting')
+        axs[1].plot([positions_p2[i] - (width / 2) * line_scatter_length, positions_p2[i] + (width / 2) * line_scatter_length],
+                    [np.mean(weighted_df_p2[feat]), np.mean(weighted_df_p2[feat])], color=dark_color_p2, linewidth=2, zorder=20, solid_capstyle='projecting')
 
     # Connect paired values for each mouse (lines)
     for midx in weighted_df_p1.index:
-        axs[2].plot([positions_p1, positions_p2],
+        axs[1].plot([positions_p1, positions_p2],
                     [weighted_df_p1.loc[midx].values, weighted_df_p2.loc[midx].values],
-                    '-', alpha=0.2, color='gray', linewidth=1, zorder=1)
+                    '-', alpha=0.8, color='gray', linewidth=0.5, zorder=1)
 
-    pu.add_significance_stars(axs[2], positions_p1, positions_p2, weighted_features_p1, weighted_features_p2,
+    pu.add_significance_stars(axs[1], positions_p1, positions_p2, weighted_features_p1, weighted_features_p2,
                               pvals_projection, fs=fs)
 
-    axs[2].set_ylabel('Projection onto PC', fontsize=fs)
-    axs[2].set_ylim(-0.6, 0.6)
-    axs[2].set_yticks(np.arange(-0.5, 0.6, 0.5))
-    axs[2].set_yticklabels(np.arange(-0.5, 0.6, 0.5), fontsize=fs)
-    axs[2].set_xticklabels('')
+    axs[1].set_ylabel('Projection onto PC', fontsize=fs)
+    axs[1].set_ylim(-0.6, 0.6)
+    axs[1].set_yticks(np.arange(-0.5, 0.6, 0.5))
+    axs[1].set_yticklabels(np.arange(-0.5, 0.6, 0.5), fontsize=fs)
+    axs[1].set_xticklabels('')
 
     ### Subplot 3: Phase Difference (p2 - p1)
     # Compute the per-mouse differences for each feature
@@ -551,23 +561,27 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
         diff_vals = feats_diff[feat].values
         # Plot individual mouse differences with some jitter for clarity
         x_jittered = np.random.normal(loc=x[i], scale=0.04, size=len(diff_vals))
-        axs[3].scatter(x_jittered, diff_vals, color='k', edgecolor='none', alpha=0.7, s=scatter_size, zorder=10)
+        axs[2].scatter(x_jittered, diff_vals, color='k', edgecolor='none', alpha=0.7, s=scatter_size, zorder=10)
         # Overlay the mean as a large colored point (grey)
-        axs[3].scatter(x[i], np.mean(diff_vals), color=diff_color, edgecolor='none', s=mean_scatter_size, zorder=20)
+        # axs[2].scatter(x[i], np.mean(diff_vals), color='k', edgecolor='none', s=mean_scatter_size, zorder=20)
+        axs[2].plot([x[i] - width * line_scatter_length, x[i] + width * line_scatter_length],
+                    [np.mean(diff_vals), np.mean(diff_vals)], color='k', linewidth=2, zorder=20, solid_capstyle='projecting')
+
 
     # Optionally annotate 'FLIP'
     if feats_diff_LH is not None:
         for i, flipped in enumerate(sign_flip):
             if flipped:
-                axs[3].text(x[i], axs[3].get_ylim()[1] * 0.9, 'FLIP', ha='center', va='top', color='red',
+                axs[2].text(x[i], axs[2].get_ylim()[1] * 0.9, 'FLIP', ha='center', va='top', color='red',
                             fontsize=fs - 1)
 
-    axs[3].set_xticklabels(top_feats_display_names, fontsize=fs, rotation=90)
-    axs[3].set_ylabel(f'{phases[-1]} - {phases[0]} (z)', fontsize=fs)
+    axs[2].set_xticks(x)
+    axs[2].set_xticklabels(top_feats_display_names, fontsize=fs, rotation=90)
+    axs[2].set_ylabel(f'{phases[-1]} - {phases[0]} (z)', fontsize=fs)
 
     for ax in axs:
         #ax.set_xticks(x)
-        if ax != axs[2] and ax != axs[0]:
+        if ax != axs[1]: #and ax != axs[0]:
             ax.set_ylim(-1.4, 1.4)
             ax.set_yticks(np.arange(-1, 1.1, 1))
             ax.set_yticklabels(np.arange(-1, 1.1, 1), fontsize=fs)
@@ -584,7 +598,7 @@ def plot_top_feat_descriptives(feats_p1, feats_p2, top_feats_pc, top_feats_loadi
         ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.25))
         ax.tick_params(axis='y', which='minor', length=4, width=1, color='k')
 
-    plt.subplots_adjust(left=0.15, right=0.85, top=0.95, bottom=0.21, hspace=0.1)
+    plt.subplots_adjust(left=0.15, right=0.85, top=0.95, bottom=0.18, hspace=0.1) # to fit all feature names in bottom = 0.33
 
     # title
     plt.suptitle(pc, fontsize=fs)

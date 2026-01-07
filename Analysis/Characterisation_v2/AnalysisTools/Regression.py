@@ -15,7 +15,7 @@ from Analysis.Characterisation_v2 import General_utils as gu
 from Analysis.Characterisation_v2.Plotting import Regression_plotting as rp
 from Analysis.Tools.config import condition_specific_settings, global_settings
 
-np.random.seed(42)
+np.random.seed(1)
 
 def compute_linear_regression(X, y, folds=5):
     model = LinearRegression(fit_intercept=False)
@@ -64,6 +64,33 @@ def compute_linear_regression_pcwise_prediction(X, y, w, shuffles=1000):
             null_mse[pc, idx] = shuffle_mse
 
     return pc_mse, y_preds, null_mse
+
+def compute_regression_existing_model(X, y, w_folds):
+    # cross-validate
+    _splits = w_folds.shape[0]
+    n_samples = X.shape[1]
+    kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_acc = []
+
+    for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n_samples), y)):
+        ### start loop through pcs
+        # Train using the training columns
+        # pick the corresponding fold weights
+        w_fold = w_folds[fold_idx]
+        # squeeze to shape (n_features,)
+        # if w_fold.ndim == 3:
+        #     # e.g. (1, n_features) inside
+        #     w_fold = np.squeeze(w_fold, axis=0)  # now (1, n_features) -> (n_features,)
+        # w_fold = np.squeeze(w_fold)
+
+        y_pred = np.dot(w_fold, X[:, test_idx])
+        y_pred[y_pred > 0] = 1
+        y_pred[y_pred < 0] = 0
+
+        acc_fold = balanced_accuracy(y[test_idx], y_pred.ravel())
+        cv_acc.append(acc_fold)
+    cv_acc = np.array(cv_acc)
+    return cv_acc
 
 def compute_regression(X, y, folds=5):
     model = LogisticRegression(penalty='l2', fit_intercept=False, solver='liblinear', C=0.5)
@@ -327,7 +354,7 @@ def fit_regression_model(loadings: pd.DataFrame, selected_feature_data: pd.DataF
 
     else:
         # load the regression from the LowHigh model
-        multipath = r"H:\Characterisation\LH_allpca_LhWnrm_res_-3-2-1_APA2Wash2\APAChar_LowHigh_Extended\MultiFeaturePredictions"
+        multipath = r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\APAChar_LowHigh_Extended\MultiFeaturePredictions"
         if select_pc_type is None:
             LH_reg_path = os.path.join(multipath, r"pca_predictions_APAChar_LowHigh.pkl")  #r"H:\Characterisation\LH_res_-3-2-1_APA2Wash2-PCStot=60-PCSuse=12\APAChar_LowHigh_Extended\MultiFeaturePredictions\pca_predictions_APAChar_LowHigh.pkl"
         elif select_pc_type == "Top3":
@@ -353,15 +380,33 @@ def fit_regression_model(loadings: pd.DataFrame, selected_feature_data: pd.DataF
         elif len(pred) > 1:
             raise ValueError(f"Multiple LH predictions found for mouse {mouse_id} with stride {s} and phase {global_settings['phases'][0]}-{global_settings['phases'][1]}")
         pred = pred[0]
+        # w = pred.pc_weights
+        # bal_acc = pred.accuracy
+        # cv_acc = pred.cv_acc
+        # w_folds = pred.w_folds
+        # pc_acc = pred.pc_acc
+        # y_preds = pred.y_preds_PCwise
+        # null_acc = pred.null_acc
+        # pc_lesions_cv_acc = pred.pc_lesions_cv_acc
+        # pc_lesions_w_folds = pred.pc_lesions_w_folds
         w = pred.pc_weights
         bal_acc = pred.accuracy
-        cv_acc = pred.cv_acc
+        # need to calculate cv_acc new for this data!!
+        cv_acc = compute_regression_existing_model(Xdr, y_reg, pred.w_folds)
+        # cv_acc = pred.cv_acc
         w_folds = pred.w_folds
         pc_acc = pred.pc_acc
         y_preds = pred.y_preds_PCwise
         null_acc = pred.null_acc
         pc_lesions_cv_acc = pred.pc_lesions_cv_acc
         pc_lesions_w_folds = pred.pc_lesions_w_folds
+        null_acc_circ = pred.null_acc_circ
+        w_single_pc = pred.w_single_pc
+        bal_acc_single_pc = pred.bal_acc_single_pc
+        cv_acc_single_pc = pred.cv_acc_single_pc
+        cv_acc_shuffle_single_pc = pred.cv_acc_shuffle_single_pc
+        bal_acc_shuffle_single_pc = pred.bal_acc_shuffle_single_pc
+
 
     # mean_cv_acc_PCwise = np.mean(cv_acc_PCwise, axis=1)
     # mean_cv_acc_shuffle_PCwise = np.mean(cv_acc_shuffle_PCwise, axis=1)

@@ -76,11 +76,16 @@ def add_cluster_brackets_heatmap(manual_clusters, feature_names, ax, horizontal=
                                           k_r=k_r_adjusted * -1, int_line_num=int_line_num, fontsize=fs)
 
 # Helper function to darken a hex color
-def darken_color(hex_color, factor=0.7):
+def darken_color(hex_color, factor=0.7, to_black=False):
     # factor < 1 will darken the color
     rgb = mcolors.to_rgb(hex_color)
-    dark_rgb = tuple([x * factor for x in rgb])
-    return mcolors.to_hex(dark_rgb)
+    if not to_black:
+        dark_rgb = tuple([x * factor for x in rgb])
+        return mcolors.to_hex(dark_rgb)
+    else:
+        # here 1 = original colour, 0 = black
+        dark_rgb = tuple((1 - factor) * 0 + factor * x for x in rgb)  # blend with black
+        return mcolors.to_hex(dark_rgb)
 
 # def get_colors(type):
 #     if type == ['APA2','Wash2']:

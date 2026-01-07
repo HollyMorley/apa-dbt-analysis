@@ -80,40 +80,40 @@ def compute_lda_pcwise(X, y, w, intercept, shuffles=1000):
             null_acc[pc, idx] = bal_acc
     return pc_acc, null_acc, y_preds
 
-def calculate_PC_prediction_significances(lda_data, s, conditions, mice_thresh_percent, accmse='acc', lesion_significance=False): # ignore accmse and lesion_significance here
-    if conditions:
-        mouse_stride_preds = [pred for pred in lda_data if pred.stride == s and pred.conditions == conditions]
-    else:
-        mouse_stride_preds = [pred for pred in lda_data if pred.stride == s]
-
-    accuracies_x_pcs = []
-    accuracies_pcs_x_shuffle = []
-    pc_weights = []
-    for mouse_pred in mouse_stride_preds:
-        accuracies_x_pcs.append(mouse_pred.pc_acc)
-        accuracies_pcs_x_shuffle.append(mouse_pred.null_acc)
-        pc_weights.append(mouse_pred.weights)
-    accuracies_x_pcs = np.array(accuracies_x_pcs)  # mice x pcs
-    accuracies_shuffle_x_pcs = np.array(accuracies_pcs_x_shuffle)  # mice x pcs x shuffle
-    mean_accs = accuracies_x_pcs.mean(axis=0)
-
-    pc_weights = np.array(pc_weights)
-    pos_counts = (pc_weights > 0).sum(axis=0)
-    neg_counts = (pc_weights < 0).sum(axis=0)
-    max_counts = np.maximum(pos_counts, neg_counts)
-    total_mice_num = len(mouse_stride_preds)
-    percent_uniform = max_counts / total_mice_num
-    mice_uniform = percent_uniform >= mice_thresh_percent
-    # ideal_mice_num  = total_mice_num - mice_thresh
-    # counts_more_than_thresh = max_counts >= ideal_mice_num
-
-    delta_acc_by_mouse = accuracies_x_pcs - accuracies_shuffle_x_pcs.mean(axis=2)
-    pc_significances = np.zeros((delta_acc_by_mouse.shape[1]))
-    for pc in np.arange(delta_acc_by_mouse.shape[1]):
-        pc_acc = delta_acc_by_mouse[:, pc]
-        stat = ttest_1samp(pc_acc, 0)
-        pc_significances[pc] = stat.pvalue
-
-    return pc_significances, mean_accs, mice_uniform, max_counts, total_mice_num
+# def calculate_PC_prediction_significances(lda_data, s, conditions, mice_thresh_percent, accmse='acc', lesion_significance=False): # ignore accmse and lesion_significance here
+#     if conditions:
+#         mouse_stride_preds = [pred for pred in lda_data if pred.stride == s and pred.conditions == conditions]
+#     else:
+#         mouse_stride_preds = [pred for pred in lda_data if pred.stride == s]
+#
+#     accuracies_x_pcs = []
+#     accuracies_pcs_x_shuffle = []
+#     pc_weights = []
+#     for mouse_pred in mouse_stride_preds:
+#         accuracies_x_pcs.append(mouse_pred.pc_acc)
+#         accuracies_pcs_x_shuffle.append(mouse_pred.null_acc)
+#         pc_weights.append(mouse_pred.weights)
+#     accuracies_x_pcs = np.array(accuracies_x_pcs)  # mice x pcs
+#     accuracies_shuffle_x_pcs = np.array(accuracies_pcs_x_shuffle)  # mice x pcs x shuffle
+#     mean_accs = accuracies_x_pcs.mean(axis=0)
+#
+#     pc_weights = np.array(pc_weights)
+#     pos_counts = (pc_weights > 0).sum(axis=0)
+#     neg_counts = (pc_weights < 0).sum(axis=0)
+#     max_counts = np.maximum(pos_counts, neg_counts)
+#     total_mice_num = len(mouse_stride_preds)
+#     percent_uniform = max_counts / total_mice_num
+#     mice_uniform = percent_uniform >= mice_thresh_percent
+#     # ideal_mice_num  = total_mice_num - mice_thresh
+#     # counts_more_than_thresh = max_counts >= ideal_mice_num
+#
+#     delta_acc_by_mouse = accuracies_x_pcs - accuracies_shuffle_x_pcs.mean(axis=2)
+#     pc_significances = np.zeros((delta_acc_by_mouse.shape[1]))
+#     for pc in np.arange(delta_acc_by_mouse.shape[1]):
+#         pc_acc = delta_acc_by_mouse[:, pc]
+#         stat = ttest_1samp(pc_acc, 0)
+#         pc_significances[pc] = stat.pvalue
+#
+#     return pc_significances, mean_accs, mice_uniform, max_counts, total_mice_num
 
 

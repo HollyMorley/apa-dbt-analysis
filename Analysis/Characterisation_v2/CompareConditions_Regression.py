@@ -13,7 +13,9 @@ import seaborn as sns
 from itertools import combinations
 from scipy.stats import wilcoxon
 import scipy.stats as stats
-np.random.seed(42)
+from scipy.stats import ttest_1samp
+np.random.seed(1)
+
 
 
 from Helpers.Config_23 import *
@@ -237,7 +239,7 @@ class RegRunner:
         pcs1 = pcs1[:, [0, 2, 6]]
         pcs2 = pcs2[:, [0, 2, 6]]
 
-        # 🔥 NEW: concatenate and z-score across conditions
+        # concatenate and z-score across conditions
         pcs_all = np.vstack([pcs1, pcs2])
         mean_pcs = pcs_all.mean(axis=0)
         std_pcs = pcs_all.std(axis=0)
@@ -506,39 +508,48 @@ class RegRunner:
                 if subset.empty:
                     continue
 
-                bp = ax.boxplot(
-                    subset['value'], positions=[xpos], widths=0.2,
-                    patch_artist=True, showfliers=True
-                )
+                # Scatter individual points
+                ax.scatter([xpos] * len(subset), subset['value'],
+                           color=face_c, edgecolor='none', alpha=0.7, s=15, zorder=3)
 
-                for patch in bp['boxes']:
-                    patch.set_facecolor(face_c)
-                    patch.set_edgecolor(edge_c)
-                    patch.set_alpha(0.7)
-                    patch.set_linewidth(1)
+                # Mean line
+                mean_val = subset['value'].mean()
+                ax.hlines(mean_val, xpos - 0.1, xpos + 0.1,
+                          colors=face_c, linewidth=2.5)
 
-                for whisker in bp['whiskers']:
-                    whisker.set_color(edge_c)
-                    whisker.set_linewidth(1)
-
-                for cap in bp['caps']:
-                    cap.set_color(edge_c)
-                    cap.set_linewidth(1)
-
-                for median in bp['medians']:
-                    median.set_color('black')
-                    median.set_linewidth(1.5)
-
-                for flier in bp['fliers']:
-                    flier.set_marker('o')
-                    flier.set_markersize(3)
-                    flier.set_markerfacecolor(face_c)
-                    flier.set_markeredgecolor(edge_c)
-
-            # Overlay scatter points
-            x_pos_map = dict(zip(x_labels, x_positions))
-            x_numeric = [x_pos_map[cond] for cond in df_plot['condition']]
-            ax.scatter(x_numeric, df_plot['value'], color='k', s=4, zorder=3)
+            #     bp = ax.boxplot(
+            #         subset['value'], positions=[xpos], widths=0.2,
+            #         patch_artist=True, showfliers=True
+            #     )
+            #
+            #     for patch in bp['boxes']:
+            #         patch.set_facecolor(face_c)
+            #         patch.set_edgecolor(edge_c)
+            #         patch.set_alpha(0.7)
+            #         patch.set_linewidth(1)
+            #
+            #     for whisker in bp['whiskers']:
+            #         whisker.set_color(edge_c)
+            #         whisker.set_linewidth(1)
+            #
+            #     for cap in bp['caps']:
+            #         cap.set_color(edge_c)
+            #         cap.set_linewidth(1)
+            #
+            #     for median in bp['medians']:
+            #         median.set_color('black')
+            #         median.set_linewidth(1.5)
+            #
+            #     for flier in bp['fliers']:
+            #         flier.set_marker('o')
+            #         flier.set_markersize(3)
+            #         flier.set_markerfacecolor(face_c)
+            #         flier.set_markeredgecolor(edge_c)
+            #
+            # # Overlay scatter points
+            # x_pos_map = dict(zip(x_labels, x_positions))
+            # x_numeric = [x_pos_map[cond] for cond in df_plot['condition']]
+            # ax.scatter(x_numeric, df_plot['value'], color='k', s=4, zorder=3)
 
             # Adjust x-axis
             ax.set_xticks([0, 1, 2, 3])
@@ -606,6 +617,104 @@ class RegRunner:
             plt.savefig(f"{savepath}.svg", dpi=300)
             plt.close()
 
+            # --- New figure: APA - Wash per condition (LH, LM, HL) with per-mouse lines ---
+            # Reuse df_plot to compute paired diffs
+            diffs = []
+            cond_order = ['LH', 'LM', 'HL']
+
+            for cond in cond_order:
+                df_wash = df_plot[df_plot['condition'] == f"wash_{cond}"][['mouse', 'value']].rename(
+                    columns={'value': 'wash'})
+                df_apa = df_plot[df_plot['condition'] == f"apa_{cond}"][['mouse', 'value']].rename(
+                    columns={'value': 'apa'})
+
+                merged = pd.merge(df_wash, df_apa, on='mouse', how='inner')
+                if merged.empty:
+                    continue
+                merged['diff'] = merged['apa'] - merged['wash']
+                merged['condition'] = cond
+                diffs.append(merged[['mouse', 'condition', 'diff']])
+
+            if len(diffs) > 0:
+                df_diffs = pd.concat(diffs, ignore_index=True)
+
+                # Significance test against 0 for each condition (one-sample t-test)
+                sig_results = {}
+                for cond in cond_order:
+                    sub = df_diffs[df_diffs['condition'] == cond]['diff']
+                    if len(sub) > 1:  # t-test needs at least 2 samples
+                        stat, pval = ttest_1samp(sub, 0.0)
+                        if pval < 0.001:
+                            sig = '***'
+                        elif pval < 0.01:
+                            sig = '**'
+                        elif pval < 0.05:
+                            sig = '*'
+                        else:
+                            sig = 'ns'
+                        sig_results[cond] = (pval, sig)
+                        print(f"PC{pc} {cond}: APA–Wash vs 0, p={pval:.3f}, t={stat:.3f}, sig={sig}")
+
+                fig, ax = plt.subplots(figsize=(5, 4))
+                x_map = {'LH': 0, 'LM': 1, 'HL': 2}
+                cond_colors = {
+                    'LH': pu.get_color_speedpair('LowHigh'),
+                    'LM': pu.get_color_speedpair('LowMid'),
+                    'HL': pu.get_color_speedpair('HighLow'),
+                }
+
+                # plot per-mouse lines connecting their three condition diffs
+                for mouse, sub in df_diffs.groupby('mouse'):
+                    sub = sub.sort_values('condition', key=lambda s: s.map({c: i for i, c in enumerate(cond_order)}))
+                    xs = [x_map[c] for c in sub['condition']]
+                    ys = sub['diff'].values
+                    ax.plot(xs, ys, marker='o', markersize=4, linewidth=1, color='k', alpha=0.6)
+
+                # add mean bar per condition
+                for cond in cond_order:
+                    sub = df_diffs[df_diffs['condition'] == cond]
+                    if sub.empty:
+                        continue
+                    mean_val = sub['diff'].mean()
+                    x0 = x_map[cond]
+                    ax.hlines(mean_val, x0 - 0.25, x0 + 0.25, colors=cond_colors[cond], linewidth=3)
+
+                for cond in cond_order:
+                    sub = df_diffs[df_diffs['condition'] == cond]
+                    if sub.empty:
+                        continue
+                    mean_val = sub['diff'].mean()
+                    x0 = x_map[cond]
+                    ax.hlines(mean_val, x0 - 0.25, x0 + 0.25,
+                              colors=cond_colors[cond], linewidth=3)
+
+                    # add significance stars above the bar
+                    if cond in sig_results:
+                        pval, sig = sig_results[cond]
+                        y_offset = 0.05 * (df_diffs['diff'].max() - df_diffs['diff'].min())
+
+                        # stars above mean
+                        if sig != 'ns':
+                            ax.text(x0, mean_val + y_offset, sig,
+                                    ha='center', va='bottom', fontsize=fs)
+
+                        # p-value (just drop it above the stars, you can move later)
+                        ax.text(x0, mean_val + 2 * y_offset, f"p={pval:.3f}",
+                                ha='center', va='bottom', fontsize=fs - 1, rotation=45)
+
+                ax.axhline(0, color='gray', linestyle='--', linewidth=1)
+                ax.set_xticks([x_map[c] for c in cond_order])
+                ax.set_xticklabels(cond_order)
+                ax.set_ylabel(f'APA - Wash (PC{pc})')
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+
+                plt.tight_layout()
+                savepath = os.path.join(self.base_dir, f'PC{pc}_apa_minus_wash')
+                plt.savefig(f"{savepath}.png", dpi=300)
+                plt.savefig(f"{savepath}.svg", dpi=300)
+                plt.close()
+
     def compare_conditions_APA_correlations(self, conditions, s, chosen_pcs=[1,3,7], fs=7):
         assert len(conditions) == 2, "This method is designed for pairwise comparisons only."
         common_mice = set(condition_specific_settings[f'APAChar_{conditions[0]}']['global_fs_mouse_ids']).intersection(
@@ -627,15 +736,15 @@ class RegRunner:
             cond2_wash_pcs, _ = self.filter_data(cond2_feature_data, s, midx, apa_wash='wash')
 
             # TEMP
-            run_vals = cond2_feature_data.loc(axis=0)[s, midx].index
-            pcs = self.pca.transform(cond2_feature_data.loc(axis=0)[s, midx])
-            pcs_trimmed = pcs[:, :global_settings['pcs_to_use']]
-            pc7 = pcs_trimmed[:, 0]
-            pc7_smooth = pc7#median_filter(pc7, size=10, mode='nearest')
-
-            # plot
-            mouse_color = pu.get_color_mice(midx)
-            ax_temp.plot(run_vals, pc7_smooth, color=mouse_color)
+            # run_vals = cond2_feature_data.loc(axis=0)[s, midx].index
+            # pcs = self.pca.transform(cond2_feature_data.loc(axis=0)[s, midx])
+            # pcs_trimmed = pcs[:, :global_settings['pcs_to_use']]
+            # pc7 = pcs_trimmed[:, 0]
+            # pc7_smooth = pc7#median_filter(pc7, size=10, mode='nearest')
+            #
+            # # plot
+            # mouse_color = pu.get_color_mice(midx)
+            # ax_temp.plot(run_vals, pc7_smooth, color=mouse_color)
 
             cond1_apa_pc_avgs = np.mean(cond1_apa_pcs, axis=0)
             cond2_apa_pc_avgs = np.mean(cond2_apa_pcs, axis=0)
@@ -730,6 +839,7 @@ class RegRunner:
             savepath = os.path.join(self.base_dir, f'Comparison_{conditions[0]}_{conditions[1]}_PC{pc}_vs_PC{pc}_{key}')
             fig.savefig(f"{savepath}.png", dpi=300)
             fig.savefig(f"{savepath}.svg", dpi=300)
+            plt.close(fig)
 
     def report_overall_model_accuracy(self,f):
         """
@@ -739,17 +849,33 @@ class RegRunner:
         """
         per_mouse_means = []
 
-        for pred in self.reg_apa_predictions:
-            if pred.cv_acc is not None:
-                per_mouse_means.append(np.mean(pred.cv_acc))
+        means_s = []
+        sems_s = []
 
-        if per_mouse_means:
-            overall_mean = np.mean(per_mouse_means)
-            overall_sem = stats.sem(per_mouse_means)
-            print(f"Overall model accuracy: {overall_mean:.3f} ± {overall_sem:.3f}")
-            f.write(f"Overall model accuracy: {overall_mean:.3f} ± {overall_sem:.3f}\n")
-        else:
-            print("No cv_acc data found in predictions.")
+        for s in global_settings['stride_numbers']:
+            for pred in self.reg_apa_predictions:
+                if pred.stride == s:
+                    if pred.cv_acc is not None:
+                        per_mouse_means.append(np.mean(pred.cv_acc))
+
+            if per_mouse_means:
+                overall_mean = np.mean(per_mouse_means)
+                overall_sem = stats.sem(per_mouse_means)
+
+                means_s.append(overall_mean)
+                sems_s.append(overall_sem)
+                # print(f"Overall model accuracy: {overall_mean:.3f} ± {overall_sem:.3f}")
+                # f.write(f"Overall model accuracy: {overall_mean:.3f} ± {overall_sem:.3f}\n")
+            else:
+                print("No cv_acc data found in predictions.")
+        print(f"Overall model accuracy:\n"
+              f"stride {global_settings['stride_numbers'][0]}: {means_s[0]:.3f} ± {sems_s[0]:.3f}\n"
+              f"stride {global_settings['stride_numbers'][1]}: {means_s[1]:.3f} ± {sems_s[1]:.3f}\n"
+              f"stride {global_settings['stride_numbers'][2]}: {means_s[2]:.3f} ± {sems_s[2]:.3f}\n")
+        f.write(f"Overall model accuracy:\n"
+                f"stride {global_settings['stride_numbers'][0]}: {means_s[0]:.3f} ± {sems_s[0]:.3f}\n"
+                f"stride {global_settings['stride_numbers'][1]}: {means_s[1]:.3f} ± {sems_s[1]:.3f}\n"
+                f"stride {global_settings['stride_numbers'][2]}: {means_s[2]:.3f} ± {sems_s[2]:.3f}\n")
 
 
 
@@ -760,10 +886,10 @@ def main():
     base_dir_3way = r"H:\Characterisation_v2\Compare_LH_LM_HL_regression_chosen_pcs"
     runner = RegRunner(all_conditions, base_dir_3way)
 
-    runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1)
-    runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1)
-    runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
-    runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
+    # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1)
+    # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1)
+    # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
+    # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
 
     runner.compare_conditions_wash_vs_apa(-1)
 
@@ -781,7 +907,7 @@ def main():
         runner = RegRunner([cond1, cond2], base_dir, other_condition=other_cond)
         runner.run()
         with open(os.path.join(base_dir, 'overall_model_accuracy.txt'), 'w') as f:
-            f.write("Overall model accuracy report:\n")
+            f.write(f"Overall model accuracy report for {cond1} vs {cond2}:\n")
             runner.report_overall_model_accuracy(f)
         print("Comparison completed.")
 

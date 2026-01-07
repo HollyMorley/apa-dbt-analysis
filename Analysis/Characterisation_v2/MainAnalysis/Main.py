@@ -33,7 +33,7 @@ random.seed(42)
 np.random.seed(42)
 
 # base_save_dir_no_c = os.path.join(paths['plotting_destfolder'], f'Characterisation\\LH_res')
-base_save_dir_no_c = r"H:\Characterisation_v2\\LH"
+base_save_dir_no_c = r"H:\Characterisation_v2\\HL_test"
 
 
 def filter_data(data, phase):
@@ -371,11 +371,11 @@ def main(stride_numbers: List[int], phases: List[str],
         # Plot how each feature loads onto the PCA components
         pcap.pca_plot_feature_loadings(pca_all, phases, MultiFeatPath)
 
-    LH_feature_data  = feature_data_compare if inst["condition"] != "APAChar_LowHigh" else None
-    top_features = pcap.plot_top_features_per_PC(pca_all, feature_data, feature_data_notscaled, phases, stride_numbers, condition, MultiFeatPath, n_top_features=8, feature_data_LH=LH_feature_data)
-    # Save the top features for each PC
-    with open(os.path.join(MultiFeatPath, f'top_features_per_PC_{condition}.pkl'), 'wb') as f:
-        pickle.dump(top_features, f)
+        LH_feature_data  = feature_data_compare if inst["condition"] != "APAChar_LowHigh" else None
+        top_features = pcap.plot_top_features_per_PC(pca_all, feature_data, feature_data_notscaled, phases, stride_numbers, condition, MultiFeatPath, n_top_features=8, feature_data_LH=LH_feature_data)
+        # Save the top features for each PC
+        with open(os.path.join(MultiFeatPath, f'top_features_per_PC_{condition}.pkl'), 'wb') as f:
+            pickle.dump(top_features, f)
 
     """
     -------------------- PCA/Multi Feature Predictions ----------------------
@@ -436,10 +436,10 @@ def main(stride_numbers: List[int], phases: List[str],
         if os.path.exists(LH_pred_path):
             with open(LH_pred_path, 'rb') as f:
                 pca_pred_LH = pickle.load(f)
+        regp.mouse_sign_flip_with_LH(pca_pred, pca_pred_LH, -1, condition, MultiFeatPath)
     else:
         pca_pred_LH = None
 
-    regp.mouse_sign_flip_with_LH(pca_pred, pca_pred_LH, -1, condition, MultiFeatPath)
 
     print('Features:')
     pcs_of_interest, pcs_of_interest_criteria = gu.get_and_save_pcs_of_interest(pca_pred, stride_numbers, MultiFeatPath, lesion_significance=False, LH_pred=pca_pred_LH)

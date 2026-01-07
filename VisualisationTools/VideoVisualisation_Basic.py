@@ -1,7 +1,7 @@
 import cv2
 
 def main():
-    video_file = r"X:\hmorley\Dual-belt_APAs\videos\Round_3\20230320\HM_20230320_APACharExt_FAA-1035297_R_side_1.avi"  # Path to your AVI video file
+    video_file = r"C:\Users\hmorl\Documents\HM_20230316_APACharExt_FAA-1035246_LR_side_1.avi" # Path to your AVI video file
     cap = cv2.VideoCapture(video_file)
 
     if not cap.isOpened():

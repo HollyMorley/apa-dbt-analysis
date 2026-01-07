@@ -3,11 +3,21 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from scipy.stats import ttest_1samp
 
+def p_to_stars(p):
+    if p < 0.001:
+        return '***'
+    elif p < 0.01:
+        return '**'
+    elif p < 0.05:
+        return '*'
+    else:
+        return ''
 
 for stride_to_measure in [-3, -2, -1]:
 
-    savedir = rf"H:\Characterisation_v2\PredXDisturbance\stride_{stride_to_measure}"
+    savedir = rf"H:\Characterisation_v2\PredXDisturbance_3\stride_{stride_to_measure}"
     os.makedirs(savedir, exist_ok=True)
 
 
@@ -15,6 +25,11 @@ for stride_to_measure in [-3, -2, -1]:
         disturb_pred = pickle.load(f)
     with open(r"H:\Characterisation\LH_res_-3-2-1_APA2Wash2-PCStot=60-PCSuse=12\APAChar_LowHigh_Extended\MultiFeaturePredictions\pca_predictions_APAChar_LowHigh.pkl", 'rb') as f:
         apa_pred = pickle.load(f)
+    # with open(r"H:\Characterisation_v2\LH_res_0_APA1APA2\APAChar_LowHigh_Extended\MultiFeaturePredictions\pca_predictions_APAChar_LowHigh.pkl", 'rb') as f:
+    #     disturb_pred = pickle.load(f)
+    # with open(r"H:\Characterisation_v2\LH_res_-3-2-1_APA2Wash2\APAChar_LowHigh_Extended\MultiFeaturePredictions\pca_predictions_APAChar_LowHigh.pkl", 'rb') as f:
+    #     apa_pred = pickle.load(f)
+
 
     apa_y_pred = [pred.y_pred[0] for pred in apa_pred if pred.stride == stride_to_measure]
     apa_x_vals = [np.array(list(pred.x_vals)) for pred in apa_pred if pred.stride == stride_to_measure]
@@ -112,7 +127,25 @@ for stride_to_measure in [-3, -2, -1]:
         jitter = .02
         low_vals = np.array(low_vals)
         high_vals = np.array(high_vals)
-        ax.scatter(np.random.normal(3, jitter, size=len(low_vals)), [low_vals-high_vals], s=s)
+        deltas = low_vals - high_vals
+        ax.scatter(np.random.normal(3, jitter, size=len(deltas)), deltas, s=s)
+
+        # one-sample t-test vs 0
+        tstat, pval = ttest_1samp(deltas, 0, nan_policy='omit')
+        stars = p_to_stars(pval)
+
+        # add mean marker for delta
+        mean_delta = np.nanmean(deltas)
+        ax.scatter([3], [mean_delta], s=s * 2.5, edgecolor='k', linewidth=0.8, zorder=3)
+
+        y_min, y_max = -2, 2  # keep your chosen limits
+        ax.set_ylim(y_min, y_max)
+        span = y_max - y_min
+        y_for_star = max(mean_delta, 0) + 0.07 * span
+        y_for_star = min(y_for_star, y_max - 0.05 * span)  # keep inside frame
+        if stars:
+            ax.text(3, y_for_star, stars, ha='center', va='bottom', fontsize=9)
+
         # parts = plt.violinplot(
         #     [low_vals, high_vals],
         #     positions=[1, 2],
@@ -127,9 +160,9 @@ for stride_to_measure in [-3, -2, -1]:
         ax.set_xticks([1, 2, 3])
         ax.set_xticklabels(['Low', 'High', 'Low-High'], fontsize=7)
         # set y tick font size to 7
-        ax.set_ylim(-0.5, 2)
-        ax.set_yticks([0, 2])
-        ax.set_yticklabels([0, '+'], fontsize=7)
+        ax.set_ylim(-2, 2) ################## was (-0.5, 2)
+        ax.set_yticks([0, 2]) ################### was ([0, 2])
+        ax.set_yticklabels([0, '2'], fontsize=7)
         # ax.set_yticks([0, 1])
         # ax.set_yticklabels([0, 1], fontsize=7)
         #plt.xticks([1, 2], ['Low', 'High'])
