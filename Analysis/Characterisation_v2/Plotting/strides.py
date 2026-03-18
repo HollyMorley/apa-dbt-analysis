@@ -1,19 +1,23 @@
-import numpy as np
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
 
 plt.rcParams['svg.fonttype'] = 'none'
-import matplotlib.ticker as ticker
 from matplotlib.patches import Patch
 from scipy.interpolate import interp1d
-from matplotlib.ticker import FuncFormatter
 
 from Helpers.Config_23 import *
 
 from Helpers import utils
-from Analysis.Characterisation_v2 import General_utils as gu
 from Analysis.Characterisation_v2 import Plotting_utils as pu
+from Analysis.Tools.config import condition_specific_settings
+
+# Maps the short condition names used in this file to config keys
+CONDITION_CONFIG_MAP = {
+    'Low-High': 'APAChar_LowHigh',
+    'Low-Mid': 'APAChar_LowMid',
+    'High-Low': 'APAChar_HighLow',
+}
 
 
 def find_strides(stance_idxs, swing_idxs):
@@ -62,11 +66,13 @@ def find_strides(stance_idxs, swing_idxs):
 
 def check_sitting(run_data):
     all_st_mask = (run_data.loc(axis=1)[
-                  ['ForepawR', 'ForepawL', 'HindpawR', 'HindpawL'], 'SwSt'] ==
-              locostuff['swst_vals_2025']['st']).all(axis=1)
+                       ['ForepawR', 'ForepawL', 'HindpawR',
+                        'HindpawL'], 'SwSt'] ==
+                   locostuff['swst_vals_2025']['st']).all(axis=1)
     all_st_idxs = run_data.index.get_level_values('FrameIdx')[all_st_mask]
 
-    all_st_blocks = utils.Utils().find_blocks(all_st_idxs, gap_threshold=100, block_min_size=400)
+    all_st_blocks = utils.Utils().find_blocks(all_st_idxs, gap_threshold=100,
+                                              block_min_size=400)
 
     # If any stance blocks are found in all_st_blocks, return True
     if len(all_st_blocks) > 0:
@@ -82,7 +88,10 @@ def num_strides(raw_data):
     sitting_log = {}
 
     for condition, condition_data in raw_data.items():
-        mice = condition_data.keys()
+        allowed_mice = \
+            condition_specific_settings[CONDITION_CONFIG_MAP[condition]][
+                'global_fs_mouse_ids']
+        mice = [m for m in condition_data.keys() if m in allowed_mice]
         num_strides_df = pd.DataFrame(index=np.arange(0, 160), columns=mice)
         sitting_log[condition] = {}
 
@@ -108,7 +117,9 @@ def num_strides(raw_data):
                 # Find if all limbs are in stance for extended period
                 sitting = check_sitting(run_data)
                 if sitting:
-                    print(f'Run {ridx} of {mouse} in {condition} appears to be sitting/standing. Skipping stride count.')
+                    print(
+                        f'Run {ridx} of {mouse} in {condition} appears to be '
+                        f'sitting/standing. Skipping stride count.')
                     num_sitting += 1
                     sitting_log[condition][mouse].append(ridx)
                     continue
@@ -117,9 +128,14 @@ def num_strides(raw_data):
                     run_data.loc(axis=1)['initiating_limb'].loc(axis=0)[
                         'Transition', transition_idx]
 
-                paw = 'ForepawToeL' if transition_paw == 'ForepawL' else 'ForepawToeR'
-                paw_transition_position = run_data.loc(axis=1)[paw, 'x'].loc(axis=0)['Transition'].iloc[0]
-                if paw_transition_position < expstuff['setup']['transition_mm']:
+                paw = 'ForepawToeL' if transition_paw == 'ForepawL' else \
+                    'ForepawToeR'
+                paw_transition_position = \
+                    run_data.loc(axis=1)[paw, 'x'].loc(axis=0)[
+                        'Transition'].iloc[
+                        0]
+                if paw_transition_position < expstuff['setup'][
+                    'transition_mm']:
                     num_bad_transitions += 1
                     continue
 
@@ -136,11 +152,14 @@ def num_strides(raw_data):
                 swing_idxs = belt_1_run.index.get_level_values('FrameIdx')[
                     swing_mask]
 
-                if belt_1_run.loc(axis=1)['initiating_limb'].iloc[0] == transition_paw:
-                    # Check if paw in stance and the frame not already included in stance_idxs
+                if belt_1_run.loc(axis=1)['initiating_limb'].iloc[
+                    0] == transition_paw:
+                    # Check if paw in stance and the frame not already
+                    # included in stance_idxs
                     if belt_1_run.loc(axis=1)[transition_paw, 'SwSt'].iloc[
                         0] == locostuff['swst_vals_2025']['st'] and \
-                            belt_1_run.index.get_level_values('FrameIdx')[0] not in stance_idxs:
+                            belt_1_run.index.get_level_values('FrameIdx')[
+                                0] not in stance_idxs:
                         # Add first frame to stance idxs
                         stance_idxs = np.insert(stance_idxs, 0,
                                                 belt_1_run.index.get_level_values(
@@ -159,8 +178,12 @@ def num_strides(raw_data):
 
         stride_counts_all[condition] = num_strides_df
 
-    print(f'Identified {num_sitting} runs with extended sitting/standing periods.')
-    print(f'Identified {num_bad_transitions} runs with suspicious transition positions.')
+    print(
+        f'Identified {num_sitting} runs with extended sitting/standing '
+        f'periods.')
+    print(
+        f'Identified {num_bad_transitions} runs with suspicious transition '
+        f'positions.')
 
     return stride_counts_all, sitting_log
 
@@ -187,7 +210,8 @@ def plot_num_strides(stride_counts_all):
     return fig
 
 
-def get_suspicious_runs(raw_data, stride_counts_all, above_threshold=None, below_threshold=None):
+def get_suspicious_runs(raw_data, stride_counts_all, above_threshold=None,
+                        below_threshold=None):
     suspicious = {}
 
     for condition, num_strides_df in stride_counts_all.items():
@@ -206,7 +230,7 @@ def get_suspicious_runs(raw_data, stride_counts_all, above_threshold=None, below
                 high_stride_runs = high_stride_runs[
                     (high_stride_runs.astype(float) > above_threshold) &
                     (high_stride_runs.astype(float) < below_threshold)
-                ]
+                    ]
 
             if high_stride_runs.empty:
                 continue
@@ -241,9 +265,14 @@ def get_running_speeds(raw_data, fps=247):
 
     for condition, condition_data in raw_data.items():
         belt_speed = belt_speeds[condition]
+        allowed_mice = \
+            condition_specific_settings[CONDITION_CONFIG_MAP[condition]][
+                'global_fs_mouse_ids']
         mouse_means = []
 
         for mouse, mouse_data in condition_data.items():
+            if mouse not in allowed_mice:
+                continue
             mouse_data = mouse_data.droplevel('Day', axis=0)
             trial_speeds = []
 
@@ -257,6 +286,24 @@ def get_running_speeds(raw_data, fps=247):
                             run_data.index.get_level_values(
                                 'RunStage') == 'Transition'][0]
                 except:
+                    continue
+
+                if check_sitting(run_data):
+                    continue
+
+                # Exclude runs where transition paw is too far back on the
+                # belt, as these likely reflect bad transitions where mouse
+                # is not actually running onto belt 2
+                transition_paw = \
+                    run_data.loc(axis=1)['initiating_limb'].loc(axis=0)[
+                        'Transition', transition_idx]
+                paw_toe = 'ForepawToeL' if transition_paw == 'ForepawL' else \
+                    'ForepawToeR'
+                paw_transition_position = \
+                    run_data.loc(axis=1)[paw_toe, 'x'].loc(axis=0)[
+                        'Transition'].iloc[0]
+                if paw_transition_position < expstuff['setup'][
+                    'transition_mm']:
                     continue
 
                 belt_1_run = run_data.loc(axis=0)['RunStart']
@@ -346,37 +393,66 @@ def plot_running_speeds(speeds_all, window=(-200, 0)):
 
     return fig
 
+
 def get_stride_positions(raw_data, fps=247, n_strides_back=8):
     positions_all = {}
 
     for condition, condition_data in raw_data.items():
+        allowed_mice = \
+        condition_specific_settings[CONDITION_CONFIG_MAP[condition]][
+            'global_fs_mouse_ids']
         stride_positions = {s: [] for s in range(-1, -n_strides_back - 1, -1)}
 
         for mouse, mouse_data in condition_data.items():
+            if mouse not in allowed_mice:
+                continue
             mouse_data = mouse_data.droplevel('Day', axis=0)
-            mouse_stride_positions = {s: [] for s in range(-1, -n_strides_back - 1, -1)}
+            mouse_stride_positions = {s: [] for s in
+                                      range(-1, -n_strides_back - 1, -1)}
 
             for ridx in mouse_data.index.get_level_values('Run').unique():
                 try:
                     run_data = mouse_data.loc(axis=0)[
-                        ridx, ['RunStart', 'Transition', 'RunEnd']].droplevel('Run', axis=0)
-                    transition_idx = run_data.index.get_level_values('FrameIdx')[
-                        run_data.index.get_level_values('RunStage') == 'Transition'][0]
+                        ridx, ['RunStart', 'Transition', 'RunEnd']].droplevel(
+                        'Run', axis=0)
+                    transition_idx = \
+                        run_data.index.get_level_values('FrameIdx')[
+                            run_data.index.get_level_values(
+                                'RunStage') == 'Transition'][0]
                 except:
                     continue
 
-                transition_paw = run_data.loc(axis=1)['initiating_limb'].loc(axis=0)[
-                    'Transition', transition_idx]
-                paw_toe = 'ForepawToeL' if transition_paw == 'ForepawL' else 'ForepawToeR'
+                if check_sitting(run_data):
+                    continue
+
+                transition_paw = \
+                    run_data.loc(axis=1)['initiating_limb'].loc(axis=0)[
+                        'Transition', transition_idx]
+                paw_toe = 'ForepawToeL' if transition_paw == 'ForepawL' else \
+                    'ForepawToeR'
+
+                # Skip runs where transition paw is too far back on the
+                # belt, as these likely reflect bad transitions where mouse
+                # is not actually running onto belt 2
+                paw_transition_position = \
+                    run_data.loc(axis=1)[paw_toe, 'x'].loc(axis=0)[
+                        'Transition'].iloc[0]
+                if paw_transition_position < expstuff['setup'][
+                    'transition_mm']:
+                    continue
 
                 belt_1_run = run_data.loc(axis=0)['RunStart']
                 frame_idxs = belt_1_run.index.get_level_values('FrameIdx')
 
-                stance_mask = belt_1_run.loc(axis=1)[transition_paw, 'SwSt_discrete'] == locostuff['swst_vals_2025']['st']
-                swing_mask  = belt_1_run.loc(axis=1)[transition_paw, 'SwSt_discrete'] == locostuff['swst_vals_2025']['sw']
+                stance_mask = belt_1_run.loc(axis=1)[
+                                  transition_paw, 'SwSt_discrete'] == \
+                              locostuff['swst_vals_2025']['st']
+                swing_mask = belt_1_run.loc(axis=1)[
+                                 transition_paw, 'SwSt_discrete'] == \
+                             locostuff['swst_vals_2025']['sw']
 
                 stance_idxs = frame_idxs[stance_mask]
-                swing_idxs  = frame_idxs[swing_mask]
+                swing_idxs = frame_idxs[swing_mask]
 
                 strides = find_strides(stance_idxs, swing_idxs)
 
@@ -391,8 +467,10 @@ def get_stride_positions(raw_data, fps=247, n_strides_back=8):
                     continue
                 elif not pre_transition:
                     print(
-                        f'{mouse} run {ridx}: strides found but none before transition. '
-                        f'Stride onset frames: {[s[0] for s in strides]}, transition_idx: {transition_idx}')
+                        f'{mouse} run {ridx}: strides found but none before '
+                        f'transition. '
+                        f'Stride onset frames: {[s[0] for s in strides]}, '
+                        f'transition_idx: {transition_idx}')
                     continue
                 else:
                     # Check x position retrieval
@@ -403,7 +481,8 @@ def get_stride_positions(raw_data, fps=247, n_strides_back=8):
                             'FrameIdx') == s_on].values
                     if len(x_vals) == 0:
                         print(
-                            f'{mouse} run {ridx}: stride -1 found at frame {s_on} but no x position retrieved')
+                            f'{mouse} run {ridx}: stride -1 found at frame '
+                            f'{s_on} but no x position retrieved')
 
                 # The last pre-transition stride is stride -1
                 last_idx = pre_transition[-1][0]
@@ -416,7 +495,8 @@ def get_stride_positions(raw_data, fps=247, n_strides_back=8):
 
                     try:
                         x_pos = belt_1_run.loc(axis=1)[paw_toe, 'x'].loc[
-                            belt_1_run.index.get_level_values('FrameIdx') == s_on].values[0]
+                            belt_1_run.index.get_level_values(
+                                'FrameIdx') == s_on].values[0]
                         mouse_stride_positions[label].append(x_pos)
                     except (IndexError, KeyError):
                         continue
@@ -440,10 +520,9 @@ def plot_stride_positions(positions_all, n_strides_back=8):
         for pairs in stride_positions.values()
         for mouse_id, _ in pairs
     ))
-    mouse_colours = {mouse: plt.cm.tab10(i / len(all_mice))
-                     for i, mouse in enumerate(all_mice)}
 
-    fig, axes = plt.subplots(1, len(positions_all), figsize=(5 * len(positions_all), 4))
+    fig, axes = plt.subplots(1, len(positions_all),
+                             figsize=(5 * len(positions_all), 4))
 
     for ax, (condition, stride_positions) in zip(axes, positions_all.items()):
         for label in stride_labels:
@@ -452,6 +531,7 @@ def plot_stride_positions(positions_all, n_strides_back=8):
                 if np.isnan(val):
                     continue
                 ax.scatter(val, label, color=pu.get_color_mice(mouse_id),
+                           marker=pu.get_marker_style_mice(mouse_id),
                            edgecolors='none', alpha=0.7, s=40, zorder=3)
 
             # Mean across mice
@@ -470,7 +550,7 @@ def plot_stride_positions(positions_all, n_strides_back=8):
 
     axes[0].set_ylabel('Stride number')
 
-    legend_elements = [Patch(facecolor=mouse_colours[m], label=m)
+    legend_elements = [Patch(facecolor=pu.get_color_mice(m), label=m)
                        for m in all_mice]
     axes[-1].legend(handles=legend_elements, title='Mouse',
                     bbox_to_anchor=(1.01, 1), loc='upper left', fontsize=8)
@@ -480,7 +560,6 @@ def plot_stride_positions(positions_all, n_strides_back=8):
     plt.show()
 
     return fig
-
 
 
 files = {
@@ -504,9 +583,10 @@ for condition, path in files.items():
 stride_counts, sitting_log = num_strides(raw_data)
 fig = plot_num_strides(stride_counts)
 
-suspicious_runs = get_suspicious_runs(raw_data, stride_counts, above_threshold=6)
-suspicious_runs_2 = get_suspicious_runs(raw_data, stride_counts, below_threshold=3)
-
+suspicious_runs = get_suspicious_runs(raw_data, stride_counts,
+                                      above_threshold=6)
+suspicious_runs_2 = get_suspicious_runs(raw_data, stride_counts,
+                                        below_threshold=3)
 
 belt_speeds = {
     'Low-High': expstuff['speeds']['Low'],
@@ -517,8 +597,9 @@ belt_speeds = {
 speeds_all = get_running_speeds(raw_data)
 fig = plot_running_speeds(speeds_all, window=(-200, 0))
 
-
 stride_positions = get_stride_positions(raw_data, n_strides_back=8)
 fig = plot_stride_positions(stride_positions, n_strides_back=8)
 
-print("Analysis complete. Check generated figures and suspicious_runs for details.")
+print(
+    "Analysis complete. Check generated figures and suspicious_runs for "
+    "details.")
