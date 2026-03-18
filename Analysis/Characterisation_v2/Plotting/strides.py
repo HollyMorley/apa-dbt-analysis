@@ -1,9 +1,12 @@
+import os
+
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
 
 plt.rcParams['svg.fonttype'] = 'none'
 from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 from scipy.interpolate import interp1d
 
 from Helpers.Config_23 import *
@@ -14,9 +17,9 @@ from Analysis.Tools.config import condition_specific_settings
 
 # Maps the short condition names used in this file to config keys
 CONDITION_CONFIG_MAP = {
-    'Low-High': 'APAChar_LowHigh',
-    'Low-Mid': 'APAChar_LowMid',
-    'High-Low': 'APAChar_HighLow',
+    'LowHigh': 'APAChar_LowHigh',
+    'LowMid': 'APAChar_LowMid',
+    'HighLow': 'APAChar_HighLow',
 }
 
 
@@ -189,7 +192,7 @@ def num_strides(raw_data):
 
 
 def plot_num_strides(stride_counts_all):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=False)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
 
     for ax, (condition, num_strides_df) in zip(axes,
                                                stride_counts_all.items()):
@@ -197,14 +200,20 @@ def plot_num_strides(stride_counts_all):
         all_counts = all_counts[~pd.isnull(all_counts)].astype(float)
 
         bins = np.arange(all_counts.min(), all_counts.max() + 2)
-        ax.hist(all_counts, bins=bins, color='steelblue', edgecolor='white')
+        ax.hist(all_counts, bins=bins, color=pu.get_color_speedpair(condition),
+                edgecolor='white')
 
+        ax.set_xlim(0,10)
         ax.set_xlabel('Number of strides on Belt 1')
         ax.set_title(condition)
 
     axes[0].set_ylabel('Number of trials')
-    plt.suptitle('Distribution of stride counts on Belt 1', y=1.02)
     plt.tight_layout()
+
+    save_path = os.path.join(savedir, f"stride_hist")
+    plt.savefig(f"{save_path}.png", dpi=400)
+    plt.savefig(f"{save_path}.svg", dpi=400)
+
     plt.show()
 
     return fig
@@ -333,12 +342,6 @@ def get_running_speeds(raw_data, fps=247):
 
 
 def plot_running_speeds(speeds_all, window=(-200, 0)):
-    condition_colours = {
-        'Low-High': 'steelblue',
-        'Low-Mid': 'mediumseagreen',
-        'High-Low': 'tomato',
-    }
-
     frame_axis = np.arange(window[0], window[1])
     time_axis = frame_axis / 247
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -376,31 +379,35 @@ def plot_running_speeds(speeds_all, window=(-200, 0)):
         sem = np.nanstd(per_mouse_means, axis=0) / np.sqrt(
             per_mouse_means.shape[0])
 
-        ax.plot(time_axis, grand_mean, color=condition_colours[condition],
+        ax.plot(time_axis, grand_mean, color=pu.get_color_speedpair(condition),
                 label=condition, linewidth=2)
         ax.fill_between(time_axis, grand_mean - sem, grand_mean + sem,
-                        color=condition_colours[condition], alpha=0.2)
+                        color=pu.get_color_speedpair(condition), alpha=0.5)
 
     ax.axvline(0, color='k', linestyle='--', linewidth=1, label='Transition')
     ax.axhline(0, color='grey', linestyle=':', linewidth=0.8)
     ax.set_xlabel('Time relative to transition (s)')
     ax.set_ylabel('Running speed relative to belt (mm/s)')
-    ax.set_title('Running speed on Belt 1 prior to transition')
     ax.legend()
 
     plt.tight_layout()
+
+    save_path = os.path.join(savedir, f"speeds")
+    plt.savefig(f"{save_path}.png", dpi=400)
+    plt.savefig(f"{save_path}.svg", dpi=400)
+
     plt.show()
 
     return fig
 
 
-def get_stride_positions(raw_data, fps=247, n_strides_back=8):
+def get_stride_positions(raw_data, n_strides_back=8):
     positions_all = {}
 
     for condition, condition_data in raw_data.items():
         allowed_mice = \
-        condition_specific_settings[CONDITION_CONFIG_MAP[condition]][
-            'global_fs_mouse_ids']
+            condition_specific_settings[CONDITION_CONFIG_MAP[condition]][
+                'global_fs_mouse_ids']
         stride_positions = {s: [] for s in range(-1, -n_strides_back - 1, -1)}
 
         for mouse, mouse_data in condition_data.items():
@@ -503,8 +510,9 @@ def get_stride_positions(raw_data, fps=247, n_strides_back=8):
 
             for label in mouse_stride_positions:
                 vals = mouse_stride_positions[label]
-                stride_positions[label].append(
-                    (mouse, np.nanmean(vals) if vals else np.nan))
+                mean_val = np.nanmean(vals) if any(
+                    not np.isnan(v) for v in vals) else np.nan
+                stride_positions[label].append((mouse, mean_val))
 
         positions_all[condition] = stride_positions
 
@@ -537,12 +545,15 @@ def plot_stride_positions(positions_all, n_strides_back=8):
             # Mean across mice
             vals = [v for _, v in pairs if not np.isnan(v)]
             if vals:
-                ax.scatter(np.nanmean(vals), label, color='black',
-                           edgecolors='none', s=80, zorder=4, marker='|')
+                mean = np.nanmean(vals)
+                sem = np.nanstd(vals) / np.sqrt(len(vals))
+                ax.errorbar(mean, label, xerr=sem, fmt='|', color='black',
+                            markersize=5, capsize=3, capthick=1.5,
+                            elinewidth=1.5, zorder=4)
 
         ax.axvline(expstuff['setup']['transition_mm'], color='k',
                    linestyle='--', linewidth=1, label='Transition')
-        ax.set_xlim(0, 470)
+        ax.set_xlim(0, 500)
         ax.set_xlabel('Position on belt (mm)')
         ax.set_title(condition)
         ax.set_yticks(stride_labels)
@@ -550,29 +561,40 @@ def plot_stride_positions(positions_all, n_strides_back=8):
 
     axes[0].set_ylabel('Stride number')
 
-    legend_elements = [Patch(facecolor=pu.get_color_mice(m), label=m)
-                       for m in all_mice]
+    legend_elements = [
+        Line2D([0], [0], marker=pu.get_marker_style_mice(m),
+               color='w', markerfacecolor=pu.get_color_mice(m),
+               markersize=8, label=m)
+        for m in all_mice
+    ]
     axes[-1].legend(handles=legend_elements, title='Mouse',
                     bbox_to_anchor=(1.01, 1), loc='upper left', fontsize=8)
 
-    plt.suptitle('Stance onset position per stride', y=1.02)
     plt.tight_layout()
+
+    save_path = os.path.join(savedir, f"stride_x_positions")
+    plt.savefig(f"{save_path}.png", dpi=400)
+    plt.savefig(f"{save_path}.svg", dpi=400)
+
     plt.show()
 
     return fig
 
 
 files = {
-    'Low-High': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt"
-                r"\DualBelt_MyAnalysis\FilteredData\Round7_Jan25"
-                r"\APAChar_LowHigh\Extended\allmice.pickle",
-    'Low-Mid': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_MyAnalysis"
-               r"\FilteredData\Round7_Jan25\APAChar_LowMid\Extended\allmice"
-               r".pickle",
-    'High-Low': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt"
-                r"\DualBelt_MyAnalysis\FilteredData\Round7_Jan25"
-                r"\APAChar_HighLow\Extended\allmice.pickle",
+    'LowHigh': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt"
+               r"\DualBelt_MyAnalysis\FilteredData\Round7_Jan25"
+               r"\APAChar_LowHigh\Extended\allmice.pickle",
+    'LowMid': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_MyAnalysis"
+              r"\FilteredData\Round7_Jan25\APAChar_LowMid\Extended\allmice"
+              r".pickle",
+    'HighLow': r"H:\Dual-belt_APAs\analysis\DLC_DualBelt"
+               r"\DualBelt_MyAnalysis\FilteredData\Round7_Jan25"
+               r"\APAChar_HighLow\Extended\allmice.pickle",
 }
+
+savedir = r"H:\Characterisation_v2\Strides"
+os.makedirs(savedir, exist_ok=True)
 
 raw_data = dict.fromkeys(files.keys())
 for condition, path in files.items():
@@ -589,9 +611,9 @@ suspicious_runs_2 = get_suspicious_runs(raw_data, stride_counts,
                                         below_threshold=3)
 
 belt_speeds = {
-    'Low-High': expstuff['speeds']['Low'],
-    'Low-Mid': expstuff['speeds']['Low'],
-    'High-Low': expstuff['speeds']['High'],
+    'LowHigh': expstuff['speeds']['Low'],
+    'LowMid': expstuff['speeds']['Low'],
+    'HighLow': expstuff['speeds']['High'],
 }
 
 speeds_all = get_running_speeds(raw_data)

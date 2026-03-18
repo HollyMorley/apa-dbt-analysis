@@ -1693,7 +1693,6 @@ def start_transition_consistency(StartingPaws, TransitioningPaws, savedir):
 
     ax.set_xlabel('Proportion of Runs', fontsize=7)
     ax.set_ylabel('Mouse', fontsize=7)
-    ax.set_title('Start vs Transition Paw Combinations', fontsize=7)
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 0.5, 1])
     ax.tick_params(axis='both', which='major', labelsize=7)
@@ -1939,16 +1938,16 @@ angle_save_dir = r"H:\Characterisation_v2\Angles"
 if not os.path.exists(angle_save_dir):
     os.makedirs(angle_save_dir)
 
-plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe', raw=True)
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw')
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Tailbase')
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw', bodypart='Tailbase')
-plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe')
-plot_gait_features_corrs(data_LH['feature_data_notscaled'], stride=-1, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7)
-plot_nose_back_tail_averages(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
-plot_limb_positions_average(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
-
-plot_angles(data_LH['feature_data_notscaled'], phases=['APA2', 'Wash2'], stride=-1,
-            savedir=angle_save_dir)
+# plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+# plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe', raw=True)
+# plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw')
+# plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Tailbase')
+# plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw', bodypart='Tailbase')
+# plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe')
+# plot_gait_features_corrs(data_LH['feature_data_notscaled'], stride=-1, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7)
+# plot_nose_back_tail_averages(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+# plot_limb_positions_average(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+#
+# plot_angles(data_LH['feature_data_notscaled'], phases=['APA2', 'Wash2'], stride=-1,
+#             savedir=angle_save_dir)
 handedness(raw_data)
