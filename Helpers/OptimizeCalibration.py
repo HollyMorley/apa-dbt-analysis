@@ -227,6 +227,7 @@ class optimize:
 
         # save the figure
         fig.savefig(f"{self.base_path_name}_OptimizationResults_{suffix}.png")
+        fig.savefig(f"{self.base_path_name}_OptimizationResults_{suffix}.svg")
         plt.close(fig)
 
         # Release the video capture objects

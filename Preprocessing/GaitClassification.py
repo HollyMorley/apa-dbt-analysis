@@ -1,3 +1,41 @@
+"""
+Gait phase classification for multi-limb locomotion analysis.
+
+This module trains and evaluates a multi-output classifier to predict gait phases
+(swing/stance/unknown) for each limb independently using kinematic features extracted
+from pose tracking data. It uses LightGBM as the base estimator with scikit-learn's
+MultiOutputClassifier to handle simultaneous prediction across all limbs.
+
+Workflow
+--------
+1. Load CSV with kinematic features and limb labels (ForepawR, ForepawL, HindpawR, HindpawL)
+2. Encode categorical labels (swing/stance/unknown) to numeric format
+3. Train a multi-output LightGBM classifier on 80% of data
+4. Evaluate performance on held-out 20% test set
+5. Generate diagnostic outputs:
+   - Per-limb classification reports and confusion matrices
+   - Overall Hamming loss and subset accuracy metrics
+   - Visualisations of misclassified samples with predicted vs true labels
+   - Feature importance rankings
+
+Outputs
+-------
+- limb_classification_model.pkl : Trained multi-output classifier
+- label_encoders.pkl : Label encoders for decoding predictions
+- feature_columns.pkl : List of features used for training
+- confusion_matrix_<limb>.png : Per-limb confusion matrices
+- feature_importance.png : Top 20 most important features
+- Misclassified_Plots/ : Images of misclassified frames with annotations
+
+Notes
+-----
+- Requires pre-extracted features CSV with 'Filename' and 'Frame' columns
+- Expects corresponding video frames in structured directories for visualisation
+- Handles 'unknown' labels as a valid class (e.g., for occluded limbs)
+- Uses MultiOutputClassifier to maintain independence between limb predictions
+
+"""
+
 import pandas as pd
 import os
 import glob

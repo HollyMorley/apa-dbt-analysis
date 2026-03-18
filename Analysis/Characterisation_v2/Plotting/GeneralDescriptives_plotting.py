@@ -381,6 +381,7 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
         fig, ax = plt.subplots(figsize=(4, 2))
 
     all_arr = {}
+    stride_lengths_all = {}
     for phase in phases:
         phase_runs = expstuff['condition_exp_runs']['APAChar']['Extended'][phase]
         n_phase_runs = len(phase_runs)
@@ -462,7 +463,7 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
                 last_y = y[-1]
                 last_z = z[-1]
 
-                arr[m, r, 0, 0] = first_x
+                arr[m, r, 0, 0] = first_x # shape (n_mice, n_phase_runs, axes, position)
                 arr[m, r, 0, 1] = last_x
                 arr[m, r, 1, 0] = first_y
                 arr[m, r, 1, 1] = last_y
@@ -489,6 +490,7 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
         else:
             num_mice = arr.shape[0]
             color = pu.get_color_phase(phase)
+            dark_color = pu.darken_color(color, 0.5)
 
             # Calculate mouse means for this phase
             mouse_mean_first_x = np.nanmean(arr[:, :, 0, 0], axis=1) # shape (num_mice,)
@@ -496,64 +498,83 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
             mouse_mean_last_x = np.nanmean(arr[:, :, 0, 1], axis=1) # shape (num_mice,)
             # mouse_mean_last_y = np.nanmean(arr[:, :, 1, 1], axis=1) # shape (num_mice,)
 
+            stride_lengths_mice = np.full_like(mouse_mean_first_x, np.nan)
             for mouse in range(num_mice):
-                first_xs = arr[mouse, :, 0, 0]
-                # first_ys = arr[mouse, :, 1, 0]
+                first_xs = arr[mouse, :, 0, 0] # shape (n_phase_runs,)
                 last_xs = arr[mouse, :, 0, 1]
-                # last_ys = arr[mouse, :, 1, 1]
 
-                # Remove NaNs
                 first_xs_valid = first_xs[~np.isnan(first_xs)]
                 last_xs_valid = last_xs[~np.isnan(last_xs)]
 
-                positions = [0, 1]
+                ### Plot violin plots of start and end positions for each mouse on belt
+                interval = 50/4
+                position = interval if phase == phases[0] else 50 - interval
+                positions = [position, position]
+
+                jitter_strength = 2
+                axs[mouse].scatter(first_xs, np.random.normal(position, jitter_strength, size=first_xs.shape), edgecolors='none', facecolors='k', label='Start', marker='.', s=4, alpha=0.5)
+                axs[mouse].scatter(last_xs, np.random.normal(position, jitter_strength, size=last_xs.shape), edgecolors='k', facecolors='none', linewidths=0.3, label='End', marker='.', s=4, alpha=0.5)
 
                 parts = axs[mouse].violinplot([first_xs_valid, last_xs_valid],
                                               positions=positions,
                                               vert=False,
-                                              widths=5,
+                                              widths=15,
                                               showmeans=True,
                                               showmedians=False)
                 for pc in parts['bodies']:
                     pc.set_facecolor(color)
                     pc.set_alpha(0.3)
-                    pc.set_edgecolor(color)
+                    # pc.set_edgecolor(color)
 
                 # Colour the mean lines
-                parts['cmeans'].set_color(color)
-                parts['cmeans'].set_linewidth(2)
+                parts['cmeans'].set_color('k')
+                parts['cmeans'].set_linewidth(1)
+                parts['cmeans'].set_zorder(10)
 
                 # Colour other elements
                 for partname in ('cbars', 'cmins', 'cmaxes'):
-                    parts[partname].set_edgecolor(color)
-                    parts[partname].set_linewidth(1)
-
-                # axs[mouse].scatter(first_xs, first_ys, edgecolors='none', facecolors=color, label='Start', marker='.', s=8, zorder=5, alpha=0.5)
-                # axs[mouse].scatter(last_xs, last_ys, edgecolors=color, facecolors='none', linewidths=0.3, label='End', marker='.', s=8, zorder=5, alpha=0.5)
-                #
-                # axs[mouse].scatter(mouse_mean_first_x[mouse], mouse_mean_first_y[mouse], color=color,
-                #                    marker='x', s=30, linewidths=1.5, zorder=10, label=f'{phase} mean start')
-                # axs[mouse].scatter(mouse_mean_last_x[mouse], mouse_mean_last_y[mouse], color=color,
-                #                    marker='x', s=30, linewidths=1.5, zorder=10, label=f'{phase} mean end')
+                    parts[partname].set_edgecolor(dark_color)
+                    parts[partname].set_linewidth(0.5)
 
                 axs[mouse].plot([470, 470], [0, 50], color='k', linestyle='--', linewidth=0.5, zorder=0)
-
                 axs[mouse].set_title(f"{mice[mouse]}", fontsize=fs)
-                axs[mouse].set_ylim(0, 50)
-                axs[mouse].set_yticks(np.arange(0, 51, 25))
-                axs[mouse].set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
-                axs[mouse].set_ylabel('Y (mm)', fontsize=fs)
-                axs[mouse].set_xlim(0, 600)
-                axs[mouse].set_xticks([0, 470, 600])
-                axs[mouse].set_xticklabels([0, 470, 600], fontsize=fs)
-                axs[mouse].set_xlabel('X (mm)', fontsize=fs)
-                axs[mouse].set_aspect('equal', adjustable='box')
 
-    def set_formatting(ax):
-        ax.set_ylim(0, 50)
-        ax.set_yticks(np.arange(0, 51, 25))
-        ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
+                ### Plot stride length plot (x-axis= phases, y-axis=stride length, data=mice means across runs)
+                mouse_stride_lengths = last_xs - first_xs
+                mouse_mean_stride_length = np.nanmean(mouse_stride_lengths)
+                stride_lengths_mice[mouse] = mouse_mean_stride_length
+            stride_lengths_all[phase] = stride_lengths_mice
+
+    if not raw:
+        stride_lengths_all_arr = np.array([stride_lengths_all[phases[0]], stride_lengths_all[phases[1]]]).T  # shape (num_mice, 2)
+        fig, ax = plt.subplots(figsize=(4, 2.5))
+        for mouse in range(stride_lengths_all_arr.shape[0]):
+            ax.plot([0, 1], stride_lengths_all_arr[mouse, :], 'o-', alpha=0.3, color='grey', markersize=3, zorder=10)
+        # plot boxplots without outer box
+        p1_color = pu.get_color_phase(phases[0])
+        p2_color = pu.get_color_phase(phases[1])
+        boxprops_p1 = dict(facecolor=p1_color, color=p1_color)
+        boxprops_p2 = dict(facecolor=p2_color, color=p2_color)
+        medianprops_p1 = dict(color='k', linewidth=2)
+        medianprops_p2 = dict(color='k', linewidth=2)
+        x = np.array([0.5])
+
+        t, p = stats.wilcoxon(stride_lengths_all_arr[:,0], stride_lengths_all_arr[:,1])
+
+
+
+
+    def set_formatting(ax, violin):
+        if not violin:
+            ax.set_ylim(0, 50)
+            ax.set_yticks(np.arange(0, 51, 25))
+            ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
+        else:
+            ax.set_ylim(0, 50)
+            ax.set_yticks(np.arange(0, 51, 25))
+            ax.set_yticklabels(np.arange(0, 51, 25), fontsize=fs)
         ax.set_ylabel('Y (mm)', fontsize=fs)
+
         ax.set_xlim(0, 600)
         ax.set_xticks([0,470, 600])
         ax.set_xticklabels([0, 470, 600], fontsize=fs)
@@ -562,11 +583,11 @@ def plot_toe_distance_to_transition(raw_data, mouse_runs, phases, savedir, fs=7,
 
     if raw:
         for mouse in range(num_mice):
-            set_formatting(axs[mouse])
+            set_formatting(axs[mouse], violin=True)
         savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}_{stsw}_{bodypart}_all_mice")
 
     else:
-        set_formatting(ax)
+        set_formatting(ax, violin=False)
         savepath = os.path.join(savedir, f"toe_distance_to_transition_{phases[0]}_{phases[1]}_{stsw}_{bodypart}")
 
     fig.savefig(f"{savepath}.png", dpi=400)
@@ -1863,9 +1884,32 @@ def plot_gait_features_corrs(features, stride, phases, savedir, fs=7):
         plt.savefig(f"{save_path}.svg", dpi=400)
         plt.close()
 
+def num_strides(raw_data):
+    mice = raw_data.keys()
+    num_strides = pd.DataFrame(index=np.arange(0,160), columns=mice)
+    for midx, mouse in enumerate(mice):
+        mouse_data = raw_data[mouse].droplevel('Day', axis=0)
+        for run, ridx in enumerate(mouse_data.index.get_level_values('Run').unique()):
+            try:
+                run_data = mouse_data.loc(axis=0)[run, ['RunStart', 'Transition', 'RunEnd']].droplevel('Run', axis=0)
+                transition_idx = run_data.index.get_level_values(level='FrameIdx')[
+                run_data.index.get_level_values('RunStage') == 'Transition'][0]
+            except:
+                print('Cant find transition paw for', mouse, 'run', run)
+                continue
 
+            transition_paw = run_data.loc(axis=1)['initiating_limb'].loc(axis=0)[
+                    'Transition', transition_idx]
 
+            belt_1_run = run_data.loc(axis=0)['RunStart']
+            stance_mask = belt_1_run.loc(axis=1)[transition_paw,'SwSt_discrete'] == locostuff['swst_vals_2025']['st']
+            swing_mask = belt_1_run.loc(axis=1)[transition_paw,'SwSt_discrete'] == locostuff['swst_vals_2025']['sw']
 
+            stance_idxs = belt_1_run.index.get_level_values('FrameIdx')[stance_mask]
+            swing_idxs = belt_1_run.index.get_level_values('FrameIdx')[swing_mask]
+
+            stance_idxs_rel = stance_idxs - transition_idx
+            swing_idxs_rel = swing_idxs - transition_idx
 
 
 
@@ -1895,7 +1939,7 @@ angle_save_dir = r"H:\Characterisation_v2\Angles"
 if not os.path.exists(angle_save_dir):
     os.makedirs(angle_save_dir)
 
-# plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
+plot_toe_trajectory_real_distance(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100)
 plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Toe', raw=True)
 plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='sw')
 plot_toe_distance_to_transition(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], savedir=angle_save_dir, fs=7, n_interp=100, stsw='st', bodypart='Tailbase')
@@ -1907,4 +1951,4 @@ plot_limb_positions_average(raw_data, mouse_to_runs, phases=['APA2', 'Wash2'], s
 
 plot_angles(data_LH['feature_data_notscaled'], phases=['APA2', 'Wash2'], stride=-1,
             savedir=angle_save_dir)
-# handedness(raw_data)
+handedness(raw_data)

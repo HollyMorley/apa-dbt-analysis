@@ -1,7 +1,9 @@
 import cv2
 import pandas as pd
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('TkAgg')
 from matplotlib.widgets import Slider, Button
 from matplotlib.widgets import Button as MplButton
 import os
@@ -12,8 +14,8 @@ from matplotlib.transforms import Bbox
 
 
 # Load video and deeplabcut coordinates
-video_path = r"C:\Users\hmorl\Documents\HM_20230316_APACharExt_FAA-1035246_LR_side_1.avi"
-coord_path = (r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round3\20230316\HM_20230316_APACharExt_FAA-1035246_LR_side_1DLC_resnet50_DLC_DualBeltAug2shuffle1_1200000.h5")
+video_path = r"H:\movement\sample_data\short_form\DLC_single-mouse_DBTravelator_sideview_run41.avi"
+coord_path = (r"H:\movement\sample_data\short_form\DLC_single-mouse_DBTravelator_side_run41.h5")
     #(r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round2\20230316\HM_20230316_APACharExt_FAA-1035246_LR_front_1DLC_resnet50_DLC_DualBeltAug3shuffle1_1000000.h5")
     #(r"H:\Dual-belt_APAs\analysis\DLC_DualBelt\DualBelt_AnalysedFiles\Round3\20230316\HM_20230316_APACharExt_FAA-1035246_LR_side_1DLC_resnet50_DLC_DualBeltAug2shuffle1_1200000.h5")
 

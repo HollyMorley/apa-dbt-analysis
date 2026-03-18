@@ -1,9 +1,44 @@
-import numpy as np
+"""
+Gait Labelling Tool for Manual Annotation of Limb Stance/Swing States
+
+This matplotlib-based GUI tool enables manual labelling of limb states (stance vs swing)
+in dual-camera mouse gait videos. It displays synchronised side and front view frames
+with interactive toggle buttons for labelling four limbs.
+
+Pipeline:
+    1. Load matched image pairs from side/front camera directories
+    2. Extract frame numbers from filenames and match corresponding views
+    3. Display images with interactive buttons for four limbs
+    4. Label each limb as stance (green), swing (red), or unknown (black)
+    5. Save labels to CSV with frame number and subdirectory identifiers
+
+Label States:
+    - True (green): Stance phase (paw on ground)
+    - False (red): Swing phase (paw in air)
+    - None (black): Unknown/unlabelled
+
+User Interactions:
+    - Left click on limb button: cycles True → False → True
+    - Right click on limb button: resets to None (unknown)
+    - Next/Previous buttons: navigate frames (auto-saves current labels)
+    - Zoom button: activate rectangle selector on side view
+    - Reset View: restore original zoom
+    - Save button: writes all labels to CSV
+
+Output CSV Format:
+    Columns: Frame, Subdirectory, HindpawL, ForepawL, HindpawR, ForepawR
+    Values: 1 (stance), 0 (swing), 'unknown'
+
+Note: This is a prototype tool. Future napari-based implementation will include
+keyboard shortcuts, timeline scrubber, and pose tracking overlay.
+"""
+
 import pandas as pd
-import os, cv2, re
+import os, re
 import matplotlib.pyplot as plt
-from matplotlib.widgets import CheckButtons, Button, RectangleSelector
-from matplotlib.patches import Rectangle
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.widgets import Button, RectangleSelector
 import tkinter as tk
 from tkinter import messagebox
 

@@ -13,12 +13,15 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backend_bases import MouseButton
+import matplotlib
+matplotlib.rcParams.update({'font.size': 8, 'font.family': 'Arial'})
 from PIL import Image, ImageTk, ImageEnhance
 from scipy.optimize import minimize
 from sklearn.linear_model import LinearRegression
 import time
 from functools import lru_cache
 from pycalib.calib import triangulate
+import pickle
 
 import Helpers.MultiCamLabelling_config as config
 from Helpers.CalibrateCams import BasicCalibration
@@ -1981,6 +1984,7 @@ class LabelFramesTool:
 
     ##################################### Calibration enhancements ############################################
     def optimize_calibration(self):
+        self.error_history = []
         reference_points = config.OPTIMIZATION_REFERENCE_LABELS
 
         # Collect labels from frames with the optimization checkbox checked
@@ -2005,6 +2009,12 @@ class LabelFramesTool:
         print("Optimizing calibration points...")
         # Start the timer
         start_time = time.time()
+
+        # Capture original calibration points before optimisation
+        original_points = {
+            label: {view: list(self.calibration_points_static[label][view])
+                    for view in ['side', 'front', 'overhead']}
+            for label in config.CALIBRATION_LABELS}
 
         result = minimize(self.objective_function, initial_flat_points, args=args, method='L-BFGS-B', bounds=bounds,
                           options={'maxiter': 100000, 'ftol': 1e-15, 'gtol': 1e-15, 'disp': False})
@@ -2033,6 +2043,71 @@ class LabelFramesTool:
 
         self.display_frame()
 
+        # Save error history and generate plot
+        error_history_path = config.CALIBRATION_SAVE_PATH_TEMPLATE.format(
+            video_name=self.video_name).replace('.csv', '_error_history.pkl')
+        with open(error_history_path, 'wb') as f:
+            pickle.dump({
+                'error_history': self.error_history,
+                'n_frames': len(checked_frames_indices),
+                'labels': reference_points
+            }, f)
+
+        self.plot_optimisation_results(
+            error_history_path,
+            n_frames=len(checked_frames_indices),
+            labels=reference_points,
+            original_points=original_points,
+            frame_index=checked_frames_indices[0]
+        )
+
+    def plot_optimisation_results(self, save_path_base, n_frames, labels,
+                                  original_points, frame_index):
+
+        fig, axs = plt.subplots(4, 1, figsize=(20, 24))
+
+        for i, view in enumerate(['side', 'front', 'overhead']):
+            frame = self.frames[view][frame_index]
+            axs[i].imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+
+            for j, label in enumerate(config.CALIBRATION_LABELS):
+                orig = original_points[label][view]
+                opt = self.calibration_points_static[label][view]
+                if orig is not None:
+                    axs[i].scatter(orig[0], orig[1], c='red', marker='+', s=60,
+                                   label='Original' if j == 0 else '')
+                if opt is not None:
+                    axs[i].scatter(opt[0], opt[1], c='blue', marker='+', s=60,
+                                   label='Optimised' if j == 0 else '')
+
+            axs[i].set_title(f'{view.capitalize()} view — frame {frame_index}',
+                             fontsize=12)
+            axs[i].axis('off')
+            if i == 0:
+                axs[i].legend(loc='upper right', frameon=False, fontsize=10)
+
+        # Convergence curve
+        axs[3].plot(self.error_history, color='#2c7bb6', linewidth=1.2)
+        axs[3].set_xlabel('Iteration', fontsize=12)
+        axs[3].set_ylabel('Total weighted reprojection error (px)',
+                          fontsize=12)
+        axs[3].set_title('Calibration optimisation convergence', fontsize=13)
+        axs[3].spines['top'].set_visible(False)
+        axs[3].spines['right'].set_visible(False)
+
+        axs[3].text(0.5, -0.18,
+                    f'Frames used: {n_frames}     Labels used: {len(labels)}     ({", ".join(labels)})',
+                    transform=axs[3].transAxes, fontsize=9, ha='center',
+                    va='top',
+                    color='dimgrey', style='italic')
+
+        plot_path = save_path_base.replace('_error_history.pkl',
+                                           '_optimisation_results.png')
+        fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+        fig.savefig(plot_path.replace('.png', '.svg'), bbox_inches='tight')
+        plt.close(fig)
+        print(f"Optimisation plot saved to {plot_path}")
+
     def compute_reprojection_error(self, labels, frame_indices, extrinsics=None, weighted=False):
         errors = {label: {"side": 0, "front": 0, "overhead": 0} for label in labels}
         cams = ["side", "front", "overhead"]
@@ -2055,7 +2130,7 @@ class LabelFramesTool:
                                 error = np.sqrt(
                                     (projected_x - original_x) ** 2 + (projected_y - original_y) ** 2)
                                 if weighted:
-                                    weight = opt_config.REFERENCE_LABEL_WEIGHTS.get(view, {}).get(label, 1.0)
+                                    weight = config.REFERENCE_LABEL_WEIGHTS.get(view, {}).get(label, 1.0)
                                     error *= weight
                                 errors[label][view] = error
                                 total_error += error
@@ -2112,6 +2187,7 @@ class LabelFramesTool:
 
         total_error, _ = self.compute_reprojection_error(reference_points, frame_indices, temp_extrinsics,
                                                          weighted=True)
+        self.error_history.append(total_error)
         print("Total error: %s" %total_error)
         return total_error
 

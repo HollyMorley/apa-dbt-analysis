@@ -1544,7 +1544,7 @@ def main():
     # GetDirsFromConditions(exp='APAChar', speed='LowHigh', repeat_extend='Repeats', exp_wash='Exp',
     #                       overwrite=True).get_dirs()
     # print("Analysing Extended: LowHigh...")
-    GetDirsFromConditions(exp='APAChar', speed='LowHigh', repeat_extend='Extended', overwrite=False).get_dirs()
+    GetDirsFromConditions(exp='APAChar', speed='LowHigh', repeat_extend='Extended', overwrite=True).get_dirs()
     print("Analysing Extended: LowMid...")
     GetDirsFromConditions(exp='APAChar', speed='LowMid', repeat_extend='Extended', overwrite=False).get_dirs()
     print("Analysing Extended: HighLow...")
