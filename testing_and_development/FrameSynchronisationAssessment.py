@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import filedialog
 class CheckSyncing():
+
     def __init__(self):
         self.filename = []
         self.file_root = []
