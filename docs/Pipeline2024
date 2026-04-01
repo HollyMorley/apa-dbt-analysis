@@ -4,7 +4,7 @@
 
 1. Create DLC project for 'Side', 'Front' and 'Overhead' views
 
-2. Run Labelling/MultiClassLabeling.py
+2. Run labelling/MultiClassLabeling.py
     - 'Extract Frames from Videos'
         - Select a video file and extract frames for labelling
     - 'Calibrate Camera Positions'
@@ -53,7 +53,7 @@
                                                    Preprocessing
 ############################################################################################################################################
 
-1. Run Preprocessing/DLCFileSorting.py
+1. Run preprocessing/DLCFileSorting.py
     - Sorts data files into folders organised by experimental condition
     - Stitches together any broken up recordings into single files
     - Moves the odd case where one mouse had to be recorded separately to the correct folder
@@ -62,7 +62,7 @@
   Mapping to 3D space
 -------------------------------------------------------------------------------------------------------------------------------------------
 
-2. Run Preprocessing/MappingRealWorld_V3.py
+2. Run preprocessing/MappingRealWorld.py
     - N.B. need to specify the experimental parameters in the script
     - Maps the 2D DLC coordinates to 3D space and saves as a '_mapped3D.h5' file
     - Before mapping, checks if the camera moved
@@ -70,33 +70,33 @@
     - Also save calibration data and visualisation of the optimisations made to the mapping (in Helpers/OptimizeCalibration.py)
 
 -------------------------------------------------------------------------------------------------------------------------------------------
-  Step Detection
+  Stride Detection
 -------------------------------------------------------------------------------------------------------------------------------------------
 N.B. don't need to re-run this section if re-run the previous steps, though can do incase the tracking significantly changes
 
-3. Preprocessing/GaitLabelling.py
+3. gait/GaitLabelling.py
     - Uses a specified selection (in the script) of extracted frames from MultiCamLabelling.py
     - Label each frame as 'stance', 'swing' or 'unidentified' for each limb
 
-4. Preprocessing/GaitFeatureExtraction.py
+4. gait/GaitFeatureExtraction.py
     - Extracts features from the 3D data extracted frames
 
-5. Preprocessing/GaitClassification.py
+5. gait/GaitClassification.py
     - Creates a classifier to classify data as 'stance' or 'swing' in the next steps, based on the features extracted from the data
 
 -------------------------------------------------------------------------------------------------------------------------------------------
   Categorisation of trials
 -------------------------------------------------------------------------------------------------------------------------------------------
 
-6. GetRunsAndLoco.py
+6. preprocessing/GetRunsAndLoco.py
     - Trims data into trials (door open -> door close)
     - Classifies each frame into 'TrialStart', 'RunStart', 'Transition', 'RunEnd', 'TrialEnd' and 'RunBack'
     - Classifies each limb into 'stance' or 'swing' for each frame based on the classifier created in GaitClassification.py
 
-(7. CheckRunAvailability.py)
+(7. Plotting/CheckRunAvailability.py)
     - Plots the runs I have over the course of the experiment to visualise any missing data
 
-8. FinalPrep.py
+8. preprocessing/FinalPrep.py
     - Compiles and saves data for all mice files in a single condition. Files are stored as a dictionary of dataframes for every mouse and saved as pickle files
     - Extended experiments data also concatenated into a single file
     - SwSt discrete column added
