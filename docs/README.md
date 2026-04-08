@@ -12,6 +12,8 @@ Code for the analysis pipeline described in:
 
 _Project is for personal use and needs some further cleanup and documentation..._
 
+<img src="media/dbt.png" alt="Schematic of dual-belt travellator" align="right" width="38%">
+
 ## Overview
 
 This repository contains the full data processing and analysis pipeline for studying anticipatory postural adjustments (
