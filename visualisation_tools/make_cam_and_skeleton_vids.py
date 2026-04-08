@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Create two MP4s (and optionally GIFs) for the same run and frame range:
 1) camera snippet cut from a recorded video

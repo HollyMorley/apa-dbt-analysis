@@ -1,8 +1,8 @@
 # APA Dual-Belt Travelator Analysis
 
 <p align="center">
-  <a href="media/combined_run.mp4">
-    <img src="media/combined_run.gif" alt="Camera view and 3D skeleton reconstruction" width="100%">
+  <a href="media/labelling_demo.mp4">
+    <img src="media/labelling_demo.gif" alt="Camera view and 3D skeleton reconstruction" width="100%">
   </a>
 </p>
 
