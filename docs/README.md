@@ -6,17 +6,15 @@
   </a>
 </p>
 
-<img src="media/dbt.png" alt="Schematic of dual-belt travellator" align="left" width="38%">
-
 Code for the analysis pipeline described in:
 
 **A Novel Mouse Paradigm for Anticipatory Postural Adjustments: Development and Behavioural Characterisation**
 
 _Project is for personal use and needs some further cleanup and documentation..._
 
-<br clear="left">
-
 ## Overview
+
+<img src="media/dbt.png" alt="Schematic of dual-belt travellator" align="right" width="38%">
 
 This repository contains the full data processing and analysis pipeline for studying anticipatory postural adjustments (
 APAs) in mice using a novel paradigm named the dual-belt travelator. The pipeline covers:
