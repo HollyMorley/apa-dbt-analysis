@@ -22,7 +22,7 @@ APAs) in mice using a novel paradigm named the dual-belt travelator. The pipelin
 1. **Multi-camera labelling and calibration** - Tools for extracting video frames across three synchronised camera
    views (side, front, overhead), calibrating camera positions using visible fixed landmarks, and labelling body parts
    across camera views simultaneously with epipolar guidelines (now isolated as
-   standalone [repo](https://github.com/HollyMorley/MultiCamLabelling) for future development)
+   standalone [repo](https://github.com/HollyMorley/3d-annotation-gui) for future development)
 2. **3D pose estimation** - Transformation of 2D DeepLabCut tracking coordinates into real-world 3D coordinates using
    camera calibration and triangulation
 3. **Gait phase detection** - ML-based classification of limb stance/swing states using LightGBM
