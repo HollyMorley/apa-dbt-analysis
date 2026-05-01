@@ -839,9 +839,21 @@ def plot_prediction_per_trial(reg_data, s, conditions, exp, save_dir, smooth_ker
 
         # Store final prediction
         interp_preds[mouse_name] = smoothed_preds
-        ax.plot(common_x, smoothed_preds, linewidth=0.6, alpha=0.3, color='grey', label=f'Mouse {mouse_name}')
 
     mean_preds = interp_preds.mean(axis=1)
+
+    # 95% CI (t-distribution) shaded region
+    from scipy.stats import t
+    all_curves_array = interp_preds.values.T  # shape: (n_mice, n_trials)
+    n = np.sum(~np.isnan(all_curves_array), axis=0)  # per-trial mouse count
+    std_curve = np.nanstd(all_curves_array, axis=0, ddof=1)
+    with np.errstate(invalid='ignore'):
+        t_crit = np.where(n > 1, t.ppf(0.975, np.maximum(n - 1, 1)), np.nan)
+        ci_margin = t_crit * std_curve / np.sqrt(n)
+    lower_bound = mean_preds.values - ci_margin
+    upper_bound = mean_preds.values + ci_margin
+    ax.fill_between(common_x, lower_bound, upper_bound, color='grey', alpha=0.3, label='95% CI', linewidth=0)
+
     ax.plot(common_x, mean_preds, color='black', linewidth=1, label='Mean Curve')
 
     for c in range(len(conditions)):

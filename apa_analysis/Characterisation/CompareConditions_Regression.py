@@ -151,6 +151,13 @@ class RegRunner:
                 'HighLow': getattr(self, 'feature_data_norm_HighLow')
             }
 
+        # Save predictions pickle for downstream CV accuracy analysis
+        conditions_tag = '_'.join([c.split('_')[-1] for c in self.conditions])
+        pred_save_path = os.path.join(self.base_dir, f'reg_predictions_{conditions_tag}.pkl')
+        with open(pred_save_path, 'wb') as f:
+            pickle.dump(self.reg_apa_predictions, f)
+        print(f"Saved comparison predictions to {pred_save_path}")
+
         performance_measure = 'mse' if is_three_way else 'acc'
         rplot.plot_reg_weights_condition_comparison(self.reg_apa_predictions, -1, self.conditions, 'APA_Char', self.base_dir)
         mean_preds, interp_preds = rplot.plot_prediction_per_trial(self.reg_apa_predictions, -1, self.conditions, 'APA_Char', self.base_dir)
@@ -881,34 +888,40 @@ class RegRunner:
 def main():
     all_conditions = ['APAChar_LowHigh', 'APAChar_LowMid', 'APAChar_HighLow']
 
-    # 3-way regression
-    base_dir_3way = r"H:\Characterisation_v2\Compare_LH_LM_HL_regression_chosen_pcs"
-    runner = RegRunner(all_conditions, base_dir_3way)
-
-    # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1)
-    # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1)
-    # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
-    # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
-
-    runner.compare_conditions_wash_vs_apa(-1)
-
-    runner.run()
-    # write report to a text file
-    with open(os.path.join(base_dir_3way, 'overall_model_accuracy.txt'), 'w') as f:
-        f.write("Overall model accuracy report:\n")
-        runner.report_overall_model_accuracy(f)
+    # # 3-way regression
+    # base_dir_3way = r"H:\Characterisation_v2\Compare_corrections_LH_LM_HL_regression_chosen_pcs"
+    # runner = RegRunner(all_conditions, base_dir_3way)
+    #
+    # # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1)
+    # # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1)
+    # # runner.compare_conditions_APA_correlations(['LowHigh','HighLow'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
+    # # runner.compare_conditions_APA_correlations(['LowHigh','LowMid'], -1, chosen_pcs=list(np.arange(global_settings['pcs_to_use'])+1))
+    #
+    # runner.compare_conditions_wash_vs_apa(-1)
+    #
+    # try:
+    #     runner.run()
+    #     # write report to a text file
+    #     with open(os.path.join(base_dir_3way, 'overall_model_accuracy.txt'), 'w') as f:
+    #         f.write("Overall model accuracy report:\n")
+    #         runner.report_overall_model_accuracy(f)
+    # except Exception as e:
+    #     print(f"3-way plotting failed (pickle still saved): {e}")
 
     # 2-way comparisons
     for cond1, cond2 in itertools.combinations(all_conditions, 2):
         other_cond = list(set(all_conditions) - {cond1, cond2})[0]
-        base_dir = rf"H:\Characterisation_v2\Compare_{cond1.split('_')[-1]}_vs_{cond2.split('_')[-1]}_regression_chosen_pcs"
+        base_dir = rf"H:\Characterisation_v2\Compare_CORRECTIONS_{cond1.split('_')[-1]}_vs_{cond2.split('_')[-1]}_regression_chosen_pcs"
         print(f"Running comparison for {cond1} vs {cond2} with projection of {other_cond} in directory {base_dir}")
-        runner = RegRunner([cond1, cond2], base_dir, other_condition=other_cond)
-        runner.run()
-        with open(os.path.join(base_dir, 'overall_model_accuracy.txt'), 'w') as f:
-            f.write(f"Overall model accuracy report for {cond1} vs {cond2}:\n")
-            runner.report_overall_model_accuracy(f)
-        print("Comparison completed.")
+        try:
+            runner = RegRunner([cond1, cond2], base_dir, other_condition=other_cond)
+            runner.run()
+            with open(os.path.join(base_dir, 'overall_model_accuracy.txt'), 'w') as f:
+                f.write(f"Overall model accuracy report for {cond1} vs {cond2}:\n")
+                runner.report_overall_model_accuracy(f)
+            print("Comparison completed.")
+        except Exception as e:
+            print(f"Error in {cond1} vs {cond2} (pickle still saved): {e}\nContinuing...")
 
 
 

@@ -365,7 +365,7 @@ class optimize:
         return calibration_data
 
     def compute_reprojection_error(self, labels, frame_indices, extrinsics=None, weighted=False):
-        errors = {label: {"side": 0, "front": 0, "overhead": 0} for label in labels}
+        errors = {label: {"side": [], "front": [], "overhead": []} for label in labels}
         cams = ["side", "front", "overhead"]
         total_error = 0
 
@@ -387,7 +387,7 @@ class optimize:
                                 if weighted:
                                     weight = opt_config.REFERENCE_LABEL_WEIGHTS[view].get(label, 1.0)
                                     error *= weight
-                                errors[label][view] = error
+                                errors[label][view].append(error)
                                 total_error += error
         return total_error, errors
 
